@@ -8,8 +8,8 @@ using namespace fheco;
 #include <string>
 #include <vector>
 
-#define height 3
-#define width 3
+#define height 4
+#define width 4
 
 void fhe()
 {
@@ -24,26 +24,29 @@ void fhe()
     }
   }
 
-  for (int i = 0; i < height; ++i)
-  {
-    for (int j = 0; j < width; ++j)
+for (int i = 0; i < height; i++)
+{
+    for (int j = 0; j < width; j++)
     {
-      if (i == 0 || i == height - 1 || j == 0 || j == width - 1)
-      {
-        output[i][j] = img[i][j];
-        continue;
-      }
-      output[i][j] = img[i - 1][j + 1] + // Top left
-                     img[i + 0][j + 1] + // Top center
-                     img[i + 1][j + 1] + // Top right
-                     img[i - 1][j + 0] + // Mid left
-                     img[i + 0][j + 0] + // Current pixel
-                     img[i + 1][j + 0] + // Mid right
-                     img[i - 1][j - 1] + // Low left
-                     img[i + 0][j - 1] + // Low center
-                     img[i + 1][j - 1]; // Low right
+        // Skip border elements using continue
+        if (i == 0 || i == height - 1 || j == 0 || j == width - 1)
+        {
+            output[i][j] = img[i][j];
+            
+        }else{
+
+        // Safe to access neighbors now, because we've already excluded border elements
+        output[i][j] = -img[i - 1][j + 1] + 
+                       img[i + 1][j + 1] + // Top right
+                       (-2) * img[i - 1][j + 0] + // Mid left
+                       0 * img[i + 0][j + 0] + // Current pixel
+                       2 * img[i + 1][j + 0] + // Mid right
+                       -img[i - 1][j - 1] + // Low leff
+                       img[i + 1][j - 1];
+                       
+        }
     }
-  }
+}
 
   for (int i = 0; i < height; i++)
   {
@@ -53,7 +56,6 @@ void fhe()
     }
   }
 }
-
 void print_bool_arg(bool arg, const string &name, ostream &os)
 {
   os << (arg ? name : "no_" + name);

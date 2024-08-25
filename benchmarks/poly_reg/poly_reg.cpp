@@ -37,7 +37,7 @@ void fhe()
   {
 
     v4[i] = Ciphertext("v4_" + std::to_string(i));
-    output[i] = v1[i] - (v4[0] * v0[i] * v0[i] + v3[0] * v0[i] + v2[0]);
+    output[i] = v1[i] - (v4[i] * v0[i] * v0[i] + v3[i] * v0[i] + v2[i]);
   }
 
   for (int i = 0; i < size; i++)

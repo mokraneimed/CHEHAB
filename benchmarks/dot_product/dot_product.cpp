@@ -8,52 +8,38 @@ using namespace fheco;
 #include <string>
 #include <vector>
 
-#define height 3
-#define width 3
+Ciphertext recursive_sum(const std::vector<Ciphertext>& vals) {
+    if (vals.size() == 1) {
+        return vals[0];
+    }
+    int mid = vals.size() / 2;
+    std::vector<Ciphertext> left(vals.begin(), vals.begin() + mid);
+    std::vector<Ciphertext> right(vals.begin() + mid, vals.end());
+    return recursive_sum(left) + recursive_sum(right);
+}
 
 void fhe()
 {
-  std::vector<std::vector<Ciphertext>> img =
-    std::vector<std::vector<Ciphertext>>(height, std::vector<Ciphertext>(width));
-  std::vector<std::vector<Ciphertext>> output(height, std::vector<Ciphertext>(width));
-  for (int i = 0; i < height; i++)
+  size_t size = 4;
+  std::vector<Ciphertext> v1(size);
+  std::vector<Ciphertext> v2(size);
+  std::vector<Ciphertext> output_vec(size);
+  Ciphertext output = encrypt(0);
+  for (int i = 0; i < size; i++)
   {
-    for (int j = 0; j < width; j++)
-    {
-      img[i][j] = Ciphertext("img_" + std::to_string(i) + std::to_string(j));
-    }
+    v1[i] = Ciphertext("v1_" + std::to_string(i));
+  }
+  for (int i = 0; i < size; i++)
+  {
+    v2[i] = Ciphertext("v2_" + std::to_string(i));
+    output_vec[i] = (v1[i] * v2[i]);
   }
 
-  for (int i = 0; i < height; ++i)
+  for (int i = 0; i < size; i++)
   {
-    for (int j = 0; j < width; ++j)
-    {
-      if (i == 0 || i == height - 1 || j == 0 || j == width - 1)
-      {
-        output[i][j] = img[i][j];
-        continue;
-      }
-      output[i][j] = img[i - 1][j + 1] + // Top left
-                     img[i + 0][j + 1] + // Top center
-                     img[i + 1][j + 1] + // Top right
-                     img[i - 1][j + 0] + // Mid left
-                     img[i + 0][j + 0] + // Current pixel
-                     img[i + 1][j + 0] + // Mid right
-                     img[i - 1][j - 1] + // Low left
-                     img[i + 0][j - 1] + // Low center
-                     img[i + 1][j - 1]; // Low right
-    }
-  }
-
-  for (int i = 0; i < height; i++)
-  {
-    for (int j = 0; j < width; j++)
-    {
-      output[i][j].set_output("output_" + std::to_string(i) + std::to_string(j));
-    }
+    output_vec[i].set_output("output_" + std::to_string(i));
   }
 }
-
 void print_bool_arg(bool arg, const string &name, ostream &os)
 {
   os << (arg ? name : "no_" + name);

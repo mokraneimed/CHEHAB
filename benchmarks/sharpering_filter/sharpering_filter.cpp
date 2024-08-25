@@ -33,14 +33,14 @@ void fhe()
         output[i][j] = img[i][j];
         continue;
       }
-      output[i][j] = img[i - 1][j + 1] + // Top left
-                     img[i + 0][j + 1] + // Top center
-                     img[i + 1][j + 1] + // Top right
+      output[i][j] = -img[i - 1][j + 1] - // Top left
+                     img[i + 0][j + 1] - // Top center
+                     img[i + 1][j + 1] - // Top right
                      img[i - 1][j + 0] + // Mid left
-                     img[i + 0][j + 0] + // Current pixel
-                     img[i + 1][j + 0] + // Mid right
-                     img[i - 1][j - 1] + // Low left
-                     img[i + 0][j - 1] + // Low center
+                     8 * img[i + 0][j + 0] + // Current pixel
+                     img[i + 1][j + 0] - // Mid right
+                     img[i - 1][j - 1] - // Low left
+                     img[i + 0][j - 1] - // Low center
                      img[i + 1][j - 1]; // Low right
     }
   }
