@@ -10,7 +10,7 @@ edition = "2021"
 name = "egraphslib"
 
 [dependencies]
-egg = "0.6.0"
+egg = { git = "https://github.com/mokraneimed/egg.git", branch = "main" }
 assert_approx_eq = "1.1.0"
 itertools = "0.9.0"
 clap = "2.33.2"

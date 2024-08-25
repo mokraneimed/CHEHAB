@@ -64,8 +64,7 @@ dependencies = [
 [[package]]
 name = "egg"
 version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05a6c0bbc92278f84e742f08c0ab9cb16a987376cd2bc39d228ef9c74d98d6f7"
+source = "git+https://github.com/mokraneimed/egg.git?branch=main#8e13e2889c51537365550580ff6b71563d1dd17f"
 dependencies = [
  "indexmap",
  "instant",

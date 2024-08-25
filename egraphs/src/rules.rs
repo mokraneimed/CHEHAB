@@ -1,4 +1,6 @@
 use std::{collections::HashMap, usize};
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 use crate::{
     extractor::Extractor,
@@ -60,8 +62,10 @@ pub fn run(
     // }
 
     // Initialize cost and expression for extraction
-    let mut best_cost = usize::MAX;
-    let mut best_expr: RecExpr<VecLang> = RecExpr::default();
+    // let mut best_cost = usize::MAX;
+    let best_cost = Arc::new(Mutex::new(usize::MAX));
+    // let mut best_expr: RecExpr<VecLang> = RecExpr::default();
+    let best_expr = Arc::new(Mutex::new(RecExpr::<VecLang>::default()));
 
     // Perform extraction from all combinations of e-nodes
 
@@ -72,12 +76,15 @@ pub fn run(
         0,
         0,
         vec![],
-        &mut best_cost,
-        &mut best_expr,
+        Arc::clone(&best_cost),
+        Arc::clone(&best_expr)
     );
 
+    let cost = best_cost.lock().unwrap().clone();
+    let expr = best_expr.lock().unwrap().clone();
+
     // Return the extracted cost and expression
-    (best_cost, best_expr)
+    (cost, expr)
 }
 pub fn vectorization_rules(vector_width: usize) -> Vec<Rewrite<VecLang, ConstantFold>> {
     let mut rules: Vec<Rewrite<VecLang, ConstantFold>> = vec![];
