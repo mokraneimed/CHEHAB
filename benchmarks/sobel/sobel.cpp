@@ -13,9 +13,13 @@ using namespace fheco;
 
 void fhe()
 {
-  std::vector<std::vector<Ciphertext>> img =
-    std::vector<std::vector<Ciphertext>>(height, std::vector<Ciphertext>(width));
-  std::vector<std::vector<Ciphertext>> output(height, std::vector<Ciphertext>(width));
+    std::vector<std::vector<Ciphertext>> img =
+        std::vector<std::vector<Ciphertext>>(height, std::vector<Ciphertext>(width));
+    std::vector<std::vector<Ciphertext>> Gx(height, std::vector<Ciphertext>(width));
+    std::vector<std::vector<Ciphertext>> Gy(height, std::vector<Ciphertext>(width));
+    std::vector<std::vector<Ciphertext>> squared_Gx(height, std::vector<Ciphertext>(width));
+    std::vector<std::vector<Ciphertext>> squared_Gy(height, std::vector<Ciphertext>(width));
+    std::vector<std::vector<Ciphertext>> output(height, std::vector<Ciphertext>(width));
   for (int i = 0; i < height; i++)
   {
     for (int j = 0; j < width; j++)
@@ -24,24 +28,57 @@ void fhe()
     }
   }
 
+  // calculate Gx and Gy
+  for (int i = 0; i < height; ++i)
+    {
+        for (int j = 0; j < width; ++j)
+        {
+          if (i==height-1 || j==width-1 || i==0 || j==0){
+            Gx[i][j] = img[i][j];
+            Gy[i][j] = img[i][j];
+            continue;
+          }
+           Gx[i][j] =  img[i - 1][j + 1] + // Top left
+                        2 * img[i + 0][j + 1] + // Top center
+                        img[i + 1][j + 1] + // Top right
+                        0 * img[i + 0][j + 0] - // Current pixel
+                        img[i - 1][j - 1] - // Low left
+                        2 * img[i + 0][j - 1] - // Low center
+                        img[i + 1][j - 1]; // Low right
+                        
+            Gy[i][j] = -img[i - 1][j + 1] + 
+                        img[i + 1][j + 1] + // Top right
+                        (-2) * img[i - 1][j + 0] + // Mid left
+                        0 * img[i + 0][j + 0] + // Current pixel
+                        2 * img[i + 1][j + 0] + // Mid right
+                        -img[i - 1][j - 1] + // Low leff
+                        img[i + 1][j - 1];
+        }
+    }
+
+    // Calculate Gx and Gy square
   for (int i = 0; i < height; ++i)
   {
     for (int j = 0; j < width; ++j)
     {
-      if (i == 0 || i == height - 1 || j == 0 || j == width - 1)
-      {
-        output[i][j] = img[i][j];
-        continue;
+      squared_Gx[i][j] = Gx[i][0] * Gx[0][j];
+      squared_Gy[i][j] = Gy[i][0] * Gy[0][j];
+      for (size_t k = 1; k < height; k++){
+        squared_Gx[i][j] += Gx[i][k] * Gx[k][j];
+        squared_Gy[i][j] += Gy[i][k] * Gy[k][j];
       }
-      output[i][j] = img[i - 1][j + 1] + // Top left
-                     2 * img[i + 0][j + 1] + // Top center
-                     img[i + 1][j + 1] + // Top right
-                     0 * img[i + 0][j + 0] - // Current pixel
-                     img[i - 1][j - 1] - // Low left
-                     2 * img[i + 0][j - 1] - // Low center
-                     img[i + 1][j - 1]; // Low right
     }
   }
+
+  // Calculate the output
+    for (int i = 0; i < height; ++i)
+  {
+    for (int j = 0; j < width; ++j)
+    {
+      output[i][j] = squared_Gx[i][j] + squared_Gy[i][j];
+    }
+    } 
+
 
   for (int i = 0; i < height; i++)
   {
