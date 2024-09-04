@@ -1,6 +1,5 @@
 use std::{collections::HashMap, usize};
 use std::sync::{Arc, Mutex};
-use std::thread;
 
 use crate::{
     extractor::Extractor,
@@ -8,6 +7,7 @@ use crate::{
 };
 use egg::rewrite as rw;
 use egg::*;
+use crate::extractor::find_best;
 
 // Check if all the variables, in this case memories, are equivalent
 
@@ -44,7 +44,7 @@ pub fn run(
     let (eg, root) = (runner.egraph, runner.roots[0]);
 
     // Prepare for extraction, always add the literal zero
-    let mut extractor = Extractor::new(&eg);
+    let extractor = Extractor::new(&eg);
 
     // Collect all e-classes
     let eclasses = eg.classes();
@@ -67,9 +67,18 @@ pub fn run(
     // let mut best_expr: RecExpr<VecLang> = RecExpr::default();
     let best_expr = Arc::new(Mutex::new(RecExpr::<VecLang>::default()));
 
+    let egraph = extractor.get_egraph();
+    let current_eclass = &egraph[root];
+
+    let eclass_nodes = current_eclass.nodes.clone();
+    let eclass_id = current_eclass.id;
+
     // Perform extraction from all combinations of e-nodes
 
-    extractor.find_best(
+    find_best(
+        egraph,
+        eclass_nodes,
+        eclass_id,
         vec![root],
         HashMap::new(),
         root,
@@ -82,6 +91,7 @@ pub fn run(
 
     let cost = best_cost.lock().unwrap().clone();
     let expr = best_expr.lock().unwrap().clone();
+
 
     // Return the extracted cost and expression
     (cost, expr)
