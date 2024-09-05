@@ -21,9 +21,9 @@ with open(vectorization_csv, mode = 'w', newline='') as file:
     writer.writerow(["Benchmark","Vecorization Time"])    
     
 try:
-    result = subprocess.run(['cmake','-G','MSYS Makefiles','-S','.','-B','build'], shell=True, check=True, capture_output=False, text=True)
-    result = subprocess.run(['cmake','--build','build'], shell=True, check=True, capture_output=False, text=True)
-    result = subprocess.run(['cmake','--install','build'], shell=True, check=True, capture_output=False, text=True)
+    result = subprocess.run(['cmake','-S','.','-B','build'], check=True, capture_output=False, text=True)
+    result = subprocess.run(['cmake','--build','build'], check=True, capture_output=False, text=True)
+    # result = subprocess.run(['sudo','cmake','--install','build'], check=True, capture_output=False, text=True)
 except subprocess.CalledProcessError as e:
     print(f"Command failed with error:\n{e.stderr}")    
 
@@ -39,7 +39,7 @@ for subfolder_name in os.listdir(benchmarks_folder):
         fhe_generated_cpp_path = os.path.join(build_path, "fhe_vectorized.cpp")
 
         # Step 1: Construct the command to run `.\\benchmark` in the subfolder
-        command = f".\\{subfolder_name} 1 0"
+        command = f"./{subfolder_name} 1 0"
         print(f"Benchmark '{subfolder_name}' will be vectorized...")
 
         # # Set the current working directory to the subfolder
@@ -81,9 +81,9 @@ for subfolder_name in os.listdir(benchmarks_folder):
 # Step 4: compile the vectorized code.
 print(f"Compilation of the vectorized code")
 try:
-    result = subprocess.run(['cmake','-G','MSYS Makefiles','-S','.','-B','build'], shell=True, check=True, capture_output=False, text=True)
-    result = subprocess.run(['cmake','--build','build'], shell=True, check=True, capture_output=False, text=True)
-    result = subprocess.run(['cmake','--install','build'], shell=True, check=True, capture_output=False, text=True)
+    result = subprocess.run(['cmake','-S','.','-B','build'], check=True, capture_output=False, text=True)
+    result = subprocess.run(['cmake','--build','build'], check=True, capture_output=False, text=True)
+    # result = subprocess.run(['cmake','--install','build'], check=True, capture_output=False, text=True)
 except subprocess.CalledProcessError as e:
     print(f"Command failed with error:\n{e.stderr}")
 
@@ -103,7 +103,7 @@ for subfolder_name in os.listdir(benchmarks_folder):
             print(f"File {benchmark_cpp_path} not found, skipping {subfolder_name}")
             continue
 
-        command = f".\\{subfolder_name} 1"
+        command = f"./{subfolder_name} 1"
         output_file = os.path.join(build_path, f"{subfolder_name}_output.txt")
         print(f"'{subfolder_name}' compilation ...")    
         try:
