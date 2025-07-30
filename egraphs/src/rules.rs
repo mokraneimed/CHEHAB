@@ -28,9 +28,9 @@ pub fn run(
     let runner = Runner::default()
         .with_egraph(init_eg)
         .with_expr(&prog)
-        .with_node_limit(10_000_000)
+        .with_node_limit(100_000)
         .with_time_limit(std::time::Duration::from_secs(timeout))
-        .with_iter_limit(10_000)
+        .with_iter_limit(100)
         .run(&rules);
 
     // Print the reason for stopping to STDERR
@@ -371,11 +371,11 @@ pub fn rules(vector_width: usize) -> Vec<Rewrite<VecLang, ConstantFold>> {
     rules.extend(vectorization_rules(vector_width));
 
     let rotation_rules = rotation_rules(vector_width);
-    let operations_rules = operations_rules(vector_width);
-    let split_vectors = split_vectors(vector_width);
+    // let operations_rules = operations_rules(vector_width);
+    // let split_vectors = split_vectors(vector_width);
     rules.extend(rotation_rules);
-    rules.extend(operations_rules);
-    rules.extend(split_vectors);
+    // rules.extend(operations_rules); //commant this
+    // rules.extend(split_vectors); // comment this
 
     rules.extend(vec![
         //  Basic associativity/commutativity/identities

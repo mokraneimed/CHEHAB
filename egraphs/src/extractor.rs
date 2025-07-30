@@ -7,9 +7,9 @@ use crate::config::*;
 use rayon::iter::ParallelIterator;
 use rayon::iter::IntoParallelRefIterator;
 
-use rayon::ThreadPoolBuilder;
+// use rayon::ThreadPoolBuilder;
 
-use std::thread;
+// use std::thread;
 
 pub struct Extractor<'a, L: Language, N: Analysis<L>> {
     egraph: &'a egg::EGraph<L, N>,
