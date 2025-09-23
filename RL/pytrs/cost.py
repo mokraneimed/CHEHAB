@@ -2,7 +2,10 @@
 from expr import Expr, Var, Const, Op
 from serializer import expr_to_str
 import subprocess
-from rules import create_rules
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+from util import term_type, TermType
 
 
 
@@ -10,62 +13,134 @@ LITERAL = 0
 STRUCTURE = 2000
 VEC_OP = 1
 OP = 1
-def operations_cost(expr: Expr) -> int:
-    
+def operations_cost(expr: Expr, params) -> int:
+    costs = pd.read_csv('ops_costs.csv')#
+    exclude = ['poly_modulus_degree', 'coeff_modulus_size_bits', 'plain_modulus_bit_size']
+    cols_to_transform = [c for c in costs.columns if c not in exclude]
+    costs[cols_to_transform] = np.ceil(costs[cols_to_transform] / 31).astype(int)
+    n = params['n']
+    q = params['q']
+    t = params['t']
+    target = pd.DataFrame([ [n, q, t] ], columns=["poly_modulus_degree", "coeff_modulus_size_bits", "plain_modulus_bit_size"])
+    scaler = StandardScaler()
+    scaled_data = scaler.fit_transform(costs[['poly_modulus_degree', 'coeff_modulus_size_bits', 'plain_modulus_bit_size']])
+    scaled_target = scaler.transform(target)
+    distances = np.linalg.norm(scaled_data - scaled_target, axis=1)
+    closest_index = np.argmin(distances)
+    closest_row = costs.iloc[closest_index]
+    sc_ct_ct_add = closest_row['sc_ct_ct_add'] #
+    sc_pl_ct_add = closest_row['sc_pl_ct_add'] #
+    sc_ct_ct_mul = closest_row['sc_ct_ct_mul'] #
+    sc_pl_ct_mul = closest_row['sc_pl_ct_mul'] #
+
+    rotate_cost = closest_row['rotate']
+    vec_ct_ct_add = closest_row['vec_ct_ct_add']
+    vec_pl_ct_add = closest_row['vec_pl_ct_add']
+    vec_ct_ct_mul = closest_row['vec_ct_ct_mul']
+    vec_pl_ct_mul = closest_row['vec_pl_ct_mul']
     if isinstance(expr, (Const, Var)):
         node_cost = LITERAL
 
     elif isinstance(expr, Op):
         op = expr.op
         visit_all_children = True
-        if op in ("+", "Add", "-", "Minus", "*", "Mul"):
-            node_cost = OP * 250
+        if op in ("+", "Add", "-", "Minus"):
+            if term_type(expr.args[0]) == term_type(expr.args[1]) == TermType.cipher:
+                node_cost = sc_ct_ct_add * 250
+            else:
+                node_cost = sc_pl_ct_add * 250
+        elif op in ("*", "Mul"):
+            if term_type(expr.args[0]) == term_type(expr.args[1]) == TermType.cipher:
+                node_cost = sc_ct_ct_mul * 250
+            else:
+                node_cost = sc_pl_ct_mul * 250       
         elif op == "Neg":
-            node_cost = OP * 250
+            node_cost = sc_ct_ct_add * 250
         elif op == "<<":
-            node_cost = VEC_OP * 50
-            visit_all_children = False
+            node_cost = rotate_cost
         elif op == "Vec":
-            node_cost = 0
+            node_cost = STRUCTURE
         elif op == "VecAdd":
             second_child = expr.args[1] if len(expr.args) > 1 else None
-            node_cost = VEC_OP
+            if term_type(expr.args[0]) == term_type(expr.args[1]) == TermType.cipher:
+                node_cost = vec_ct_ct_add
+            else:
+                node_cost = vec_pl_ct_add
             # if isinstance(second_child, Op):
             #     if second_child.op == "<<":
-            #         node_cost = VEC_OP * 1051
+            #         node_cost = vec_ct_ct_add * 1051
             #         visit_all_children = False
         elif op == "VecMinus":
             second_child = expr.args[1] if len(expr.args) > 1 else None
-            node_cost = VEC_OP
+            if term_type(expr.args[0]) == term_type(expr.args[1]) == TermType.cipher:
+                node_cost = vec_ct_ct_add
+            else:
+                node_cost = vec_ct_ct_add
             # if isinstance(second_child, Op):
             #     if second_child.op == "<<":
-            #         node_cost = VEC_OP * 1051
+            #         node_cost = vec_ct_ct_add * 1051
             #         visit_all_children = False
         elif op == "VecMul":
             second_child = expr.args[1] if len(expr.args) > 1 else None
-            node_cost = VEC_OP * 100
+            if term_type(expr.args[0]) == term_type(expr.args[1]) == TermType.cipher:
+                node_cost = vec_ct_ct_mul
+            else:
+                node_cost = vec_pl_ct_mul    
             # if isinstance(second_child, Op):
             #     if second_child.op == "<<":
-            #         node_cost = VEC_OP * 2150
+            #         node_cost = vec_ct_ct_mul * 2150
             #         visit_all_children = False
         elif op == "VecNeg":
-            node_cost = VEC_OP
+            node_cost = vec_ct_ct_add
         else:
             raise ValueError(f"Unknown operator: {op}")
 
         # 3) Recurse into children
         if visit_all_children:
             for child in expr.args:
-                node_cost += operations_cost(child)
+                node_cost += operations_cost(child, params)
         # else:
-        #     node_cost += operations_cost(expr.args[0] )  # Only recurse into the first child
+        #     node_cost += operations_cost(expr.args[0], params)  # Only recurse into the first child
 
     else:
         # any other unexpected node
         node_cost = 0
 
     return node_cost
+# def calculate_cost(expr: Expr, vector_size) -> float:
+#     """
+#     Calculate the cost of an expression based on multiplicative depth, normal depth, total operations, and expression size.
+    
+#     :param expr: The expression to evaluate.
+#     :param var_values: Variable assignments (not used here but can be integrated if needed).
+#     :param weights: A dictionary specifying weights for different cost components.
+#                     Example: {'depth': 2.0, 'normal_depth': 1.0, 'operations': 0.5, 'size': 0.1}
+#     :return: The calculated cost as a float.
+#     """
+#     weights = {
+#         'multiplicative_depth': 0.55,  # Higher weight to prioritize depth minimization
+#         'normal_depth': 0.3,
+#         'operations': 0.1,
+#         'size': 0.05
+#     }
+    
+#     multiplicative_depth = get_multiplicative_depth(expr)
+#     normal_depth = get_normal_depth(expr)
+#     total_operations = count_operations(expr)
+#     expression_size = count_nodes(expr)
+#     print("multiplicative_depth :" ,multiplicative_depth)
+#     print("depth :" ,normal_depth)
+    
+#     # Calculate weighted cost
+#     cost = (
+#         weights.get('multiplicative_depth', 0.55) * multiplicative_depth +
+#         weights.get('normal_depth', 0.3) * normal_depth 
+       
+#     )
+#     BASE_LITERAL_COST = 10
+#     BASE_OP_COST = 5
 
+#     return None
 
 def get_multiplicative_depth(expr: Expr) -> int:
     """
@@ -107,7 +182,6 @@ def get_normal_depth(expr: Expr) -> int:
         else:
             return 1 + max(get_normal_depth(arg) for arg in args)
     else:
-        print("here",expr.op)
         raise ValueError(f"Unknown expression type: {expr}")
 
 def count_operations(expr: Expr) -> int:
@@ -167,16 +241,14 @@ def rotations_cost(expr: Expr, parent: Expr = None) -> float:
     # Leaves (Const/Var) contribute zero
     return 0.0
 def calculate_cost(expr: Expr,
-               w_ops=1.0,
+               params,
+               w_ops=0.0028,
                w_rot=1.0,
                w_depth=1.0,
-               w_muldepth=1.0,
-               w_vec=-1.0
-               ) -> float:
+               w_muldepth=1.0) -> float:
     return (
-        w_ops * operations_cost(expr) +
+        w_ops * operations_cost(expr, params) +
         w_rot * rotations_cost(expr) +
         w_depth * get_normal_depth(expr) +
-        w_muldepth * get_multiplicative_depth(expr) 
+        w_muldepth * get_multiplicative_depth(expr)
     )
-

@@ -4,6 +4,7 @@ import random
 
 from expr    import Expr, Var, Const, Op
 from veclang import SCALAR_OPS, VECTOR_OPS
+from enum    import Enum
 
 # ---------------------------------------------------------------------------
 # variable collection / random assignment helpers
@@ -182,3 +183,17 @@ def vector_mul(a: List[Any], b: List[Any]) -> List[Any]:
 
 def vector_neg(a: List[Any]) -> List[Any]:
     return evaluate_expr(Op("VecNeg", [Const(a) if not isinstance(a, Expr) else a]), {})
+
+TermType = Enum('TermType', 'cipher plain')
+
+def term_type(term:Expr):
+    if isinstance(term, Const):
+        return TermType.plain
+    if isinstance(term, Var):
+        return TermType.cipher
+    if isinstance(term, Op):
+        for arg in term.args:
+            if term_type(arg) == TermType.cipher:
+                return TermType.cipher
+        return TermType.plain
+    raise ValueError("unknown term type")

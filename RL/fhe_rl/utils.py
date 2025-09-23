@@ -18,6 +18,8 @@ if get_tokenizer_type() == "bpe":
 else:   
     from .TRAE import TRAE, get_expression_cls_embedding
 
+from enum import Enum
+
 DEVICE = get_device()
 
 def load_embeddings(tokenizer_type=None, checkpoint_path=None, device=None):
@@ -237,3 +239,72 @@ def calc_vec_sizes(expr:Expr):
             
     rec(expr)
     return vec_sizes
+
+def create_terms_table(exp):
+    terms = {}
+    idx = 0
+    def rec(node:Expr):
+        nonlocal idx  
+        if isinstance(node, (Const, Var)):
+            terms[node] = idx
+            idx += 1
+            return
+        if isinstance(node, Op):
+            terms[node] = idx
+            idx += 1
+            for arg in node.args:
+                rec(arg)
+    rec(exp)            
+    return terms
+
+
+def topological_sort(exp):
+
+    terms_table = create_terms_table(exp)
+
+    class Call:
+        def __init__(self, term, children_processed):
+            self.term = term
+            self.children_processed = children_processed
+   
+    Mark = Enum('Mark', 'temp perm')
+
+    sorted_terms = []
+    sorted_terms_ids = []
+    call_stack = []
+    terms_marks = {}
+    
+    for (term, idx) in terms_table.items():
+        if term not in terms_marks:
+            call_stack.append(Call(term, False))
+            while call_stack:
+                top_call = call_stack.pop()
+                top_term = top_call.term
+                if top_call.children_processed:
+                    terms_marks[top_term] = Mark.perm
+                    sorted_terms.append(top_term)
+                    sorted_terms_ids.append(terms_table[top_term])
+                    continue
+
+                if top_term in terms_marks:
+                    if terms_marks[top_term] == Mark.perm:
+                        continue
+                    if (terms_marks[top_term] == Mark.temp):
+                        raise ValueError("Graph is not a DAG (cycle detected)")   
+
+                terms_marks[top_term] = Mark.temp
+                call_stack.append(Call(top_term, True))
+                if isinstance(top_term, Op):
+                    for arg in reversed(top_term.args):
+                        call_stack.append(Call(arg, False))
+    return sorted_terms  
+
+def get_slot_count(exp):
+    if isinstance(exp, Op) and exp.op == "Vec":
+        return len(exp.args)
+    if isinstance(exp, Op):
+        for arg in exp.args:
+            slot_count = get_slot_count(arg)
+            if slot_count is not None:
+                return slot_count
+    return None                      

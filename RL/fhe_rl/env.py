@@ -13,6 +13,8 @@ else:
     
     from .TRAE import get_expression_cls_embedding
 
+from param_select import select_parameters_bfv    
+from .utils import get_slot_count
 
 
 RESET   = "\033[0m"
@@ -162,7 +164,15 @@ class fheEnv(gym.Env):
         return ( ( self.current_cost - new_cost) / self.current_cost )
     
     def get_cost(self, expr: str) -> float:
-        return calculate_cost(parse_sexpr(expr))
+        parsed_expr = parse_sexpr(expr)
+        slot_count = get_slot_count(parsed_expr)
+        params_bfv = select_parameters_bfv(20, slot_count, parsed_expr)
+        params = {
+            "n": params_bfv.n,
+            "q": params_bfv.q,
+            "t": params_bfv.t
+        }
+        return calculate_cost(parsed_expr, params)
     
     def _embed_expression(self, expr: str) -> np.ndarray:
         expr_tree = parse_sexpr(expr)

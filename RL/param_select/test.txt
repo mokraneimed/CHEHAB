@@ -1,0 +1,2 @@
+(Vec (* a b) (* c d))
+(VecAdd (VecAdd (VecMul (VecMinus (Vec c2_0 c2_2) (Vec c1_0 c1_2)) (VecMinus (Vec c2_0 c2_2) (Vec c1_0 c1_2))) (VecMul (VecMinus (Vec c2_1 c2_3) (Vec c1_1 c1_3)) (VecMinus (Vec c2_1 c2_3) (Vec c1_1 c1_3)))) (<< (VecAdd (VecMul (VecMinus (Vec c2_0 c2_2) (Vec c1_0 c1_2)) (VecMinus (Vec c2_0 c2_2) (Vec c1_0 c1_2))) (VecMul (VecMinus (Vec c2_1 c2_3) (Vec c1_1 c1_3)) (VecMinus (Vec c2_1 c2_3) (Vec c1_1 c1_3)))) 1))
