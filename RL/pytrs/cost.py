@@ -13,17 +13,20 @@ LITERAL = 0
 STRUCTURE = 2000
 VEC_OP = 1
 OP = 1
+
+costs = pd.read_csv('ops_costs.csv')#
+exclude = ['poly_modulus_degree', 'coeff_modulus_size_bits', 'plain_modulus_bit_size']
+cols_to_transform = [c for c in costs.columns if c not in exclude]
+costs[cols_to_transform] = np.ceil(costs[cols_to_transform] / 31).astype(int)
+scaler = StandardScaler()
+scaled_data = scaler.fit_transform(costs[['poly_modulus_degree', 'coeff_modulus_size_bits', 'plain_modulus_bit_size']])
+
+
 def operations_cost(expr: Expr, params) -> int:
-    costs = pd.read_csv('ops_costs.csv')#
-    exclude = ['poly_modulus_degree', 'coeff_modulus_size_bits', 'plain_modulus_bit_size']
-    cols_to_transform = [c for c in costs.columns if c not in exclude]
-    costs[cols_to_transform] = np.ceil(costs[cols_to_transform] / 31).astype(int)
     n = params['n']
     q = params['q']
     t = params['t']
     target = pd.DataFrame([ [n, q, t] ], columns=["poly_modulus_degree", "coeff_modulus_size_bits", "plain_modulus_bit_size"])
-    scaler = StandardScaler()
-    scaled_data = scaler.fit_transform(costs[['poly_modulus_degree', 'coeff_modulus_size_bits', 'plain_modulus_bit_size']])
     scaled_target = scaler.transform(target)
     distances = np.linalg.norm(scaled_data - scaled_target, axis=1)
     closest_index = np.argmin(distances)
