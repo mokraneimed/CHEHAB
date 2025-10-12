@@ -8,17 +8,21 @@ from .utils  import load_expressions, create_rules, load_embeddings
 from .logger import log_training_details
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize,DummyVecEnv
 from .callbacks import linear_schedule, EntCoefScheduler
-from stable_baselines3.common.callbacks import EvalCallback
+from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 
 def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 1_000_000, num_envs: int = 8):
     benchmarks = load_expressions("./fhe_rl/datasets/benchmarks.txt") 
     expressions = load_expressions(expressions_file, benchmarks)
     max_positions = 16
-    rules_list  = create_rules("rules.txt")
+    rules_list  = create_rules("rules.txt", "rotations_rules.txt")
     rules_list["END"] = None
     job_id = os.environ.get("SLURM_JOB_ID", "jobid")
     run_name = f"model_{job_id}"
     tensorboard_log_dir = f"./tensorboard/{run_name}"
+
+    checkpoint_dir = f"./checkpoints/{run_name}"
+    os.makedirs(checkpoint_dir, exist_ok=True)
+
     def make_env(): return Monitor(fheEnv(rules_list, expressions, max_positions=max_positions, embeddings_model=embeddings_model))
     env = SubprocVecEnv([make_env for _ in range(num_envs)], start_method='spawn')    
     val_env = DummyVecEnv([
@@ -59,6 +63,16 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
         notes="2 level hierarchical PPO max steps 75 and 8 envs"
     )
     num_benchmarks = len(benchmarks)
+
+    checkpoint_callback = CheckpointCallback(
+        save_freq=50000,
+        save_path=checkpoint_dir,
+        name_prefix="rl_model",
+        save_replay_buffer=False,
+        save_vecnormalize=True,
+        verbose=1
+    )
+
     eval_callback = EvalCallback(
         val_env, 
         best_model_save_path=f"./eval/best_model_{run_name}", 
@@ -69,10 +83,31 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
         render=False, 
         verbose=1
     )
+
+    # Check if checkpoint exists and resume
+    checkpoint_path = None
+    if os.path.exists(checkpoint_dir):
+        checkpoints = [f for f in os.listdir(checkpoint_dir) if f.startswith("rl_model_") and f.endswith("_steps.zip")]
+        if checkpoints:
+            # Get the latest checkpoint
+            latest = max(checkpoints, key=lambda x: int(x.split("_")[2]))
+            checkpoint_path = os.path.join(checkpoint_dir, latest)
+            print(f"Resuming from checkpoint: {checkpoint_path}")
+            model = PPO.load(checkpoint_path, env=env, tensorboard_log=tensorboard_log_dir)
+
+    if checkpoint_path:
+        # Calculate remaining timesteps
+        steps_done = int(latest.split("_")[2])
+        remaining_steps = total_timesteps - steps_done
+        print(f"Resuming training from step {steps_done}, {remaining_steps} steps remaining")
+    else:
+        remaining_steps = total_timesteps
+
     model.learn(
-        total_timesteps=total_timesteps, 
+        total_timesteps=remaining_steps, 
         log_interval=1, 
         progress_bar=True, 
-        callback=[eval_callback,EntCoefScheduler(ent_schedule)]
+        callback=[eval_callback,EntCoefScheduler(ent_schedule), checkpoint_callback],
+        reset_num_timesteps = (checkpoint_path is None)
     )
     model.save(run_name)

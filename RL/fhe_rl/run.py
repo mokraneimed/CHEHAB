@@ -16,7 +16,7 @@ def run_agent(expressions_file: str,embeddings_model, model_filepath: str,output
         sys.exit(1)
         return
     print(expressions)
-    rules_list = create_rules("rules.txt")
+    rules_list = create_rules("rules.txt", 'rotations_rules.txt')
     rules_list["END"] = None
     results = []
     max_positions = 16

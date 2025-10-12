@@ -38,8 +38,8 @@ def load_embeddings(tokenizer_type=None, checkpoint_path=None, device=None):
     else:
         model = load_embedding_model_dynamic(checkpoint_path, device)
         return model, None  
-def create_rules(path):
-    return _create_rules(path=path)
+def create_rules(rules_path, rotations_rules_path):
+    return _create_rules(rules_path, rotations_rules_path)
 
 def load_embedding_model_dynamic(checkpoint_path=None, device=DEVICE):
     embeddings_model = TRAE()  
@@ -168,8 +168,8 @@ def load_expressions(file_path: str,validation_exprs = []):
                 if  not (str(vec_size) in recap.keys()):
                     continue
                 token_seq = get_token_sequence(exp_str)
-                if token_seq in validation_token_set:
-                    continue
+                # if token_seq in validation_token_set:
+                #     continue
 
                 if token_seq not in unique_expressions:
                     recap[str(vec_size)] += 1
