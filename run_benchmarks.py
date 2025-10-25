@@ -10,7 +10,7 @@ benchmarks_folder = "benchmarks"
 build_folder = os.path.join("build", "benchmarks")
 operations = ["add", "sub", "multiply_plain", "rotate_rows", "negate", "multiply"]
 infos = ["benchmark"]
-additional_infos =[ "Depth", "Multplicative Depth","compile_time (s)", "execution_time (s)","Remaining_noise_budget"]
+additional_infos =[ "Depth", "Multplicative Depth","compile_time (s)", "circuit_execution_time (s)",'galois_keys_generation_time (s)','total_execution_time (s)',"Remaining_noise_budget", 'rotation_keys_size (MB)']
 infos.extend(operations) 
 infos.extend(additional_infos) 
 
@@ -51,7 +51,7 @@ benchmarks_slot_counts  = {
 optimization_method = 1 # 0 = egraph (default), 1 = RL
 cse_enabled = 1
 vectorize_code = 1 
-slot_counts= [3,4,5,8,16,32]
+slot_counts= [4,8,16,32]
 iterations = 2 #minimum 2
 window_size = 0    
 depths = [5,10] 
@@ -87,7 +87,8 @@ for subfolder_name in benchmark_folders:
                 operation_stats = {
                 "add": [], "sub": [], "multiply_plain": [], "rotate_rows": [],
                 "negate": [], "multiply": [], "Depth": [], "Multiplicative Depth": [],
-                "compile_time (s)": [], "execution_time (s)": [],"Remaining_noise_budget": [],
+                "compile_time (s)": [], "circuit_execution_time (s)": [], "galois_keys_generation_time (s)": [], 
+                "total_execution_time (s)": [], "Remaining_noise_budget": [], "rotation_keys_size (MB)": []
                 }
                 ###generate io_file for benchmark with slot_count 
                 if not subfolder_name in exceptions :
@@ -182,11 +183,26 @@ for subfolder_name in benchmark_folders:
                                     comp = 0
                                     print(f"returned lines : \n {lines} \n\n")
                                     for line in lines:
-                                        if 'execution_time_(ms):' in line:
+                                        if 'circuit_execution_time_(ms):' in line:
                                             #print(f"==> execution time {line.split()[0]}")
                                             execution_time = float(line.split()[1])
-                                            operation_stats["execution_time (s)"].append(execution_time)
+                                            operation_stats["circuit_execution_time (s)"].append(execution_time)
                                         ####################################
+                                        if 'galois_keys_generation_time_(ms):' in line:
+                                            #print(f"==> execution time {line.split()[0]}")
+                                            execution_time = float(line.split()[1])
+                                            operation_stats["galois_keys_generation_time (s)"].append(execution_time)
+                                        ####################################
+                                        if 'total_execution_time_(ms):' in line:
+                                            #print(f"==> execution time {line.split()[0]}")
+                                            execution_time = float(line.split()[1])
+                                            operation_stats["total_execution_time (s)"].append(execution_time)
+                                        ####################################
+                                        if 'rotation_keys_size_(MB):' in line:
+                                            #print(f"==> execution time {line.split()[0]}")
+                                            keys_size = float(line.split()[1])
+                                            operation_stats["rotation_keys_size (MB)"].append(keys_size)
+                                        ####################################                                         
                                         if 'Remaining_noise_budget:' in line:
                                             Remaining_noise_budget=int(line.split()[1])
                                             operation_stats["Remaining_noise_budget"].append(Remaining_noise_budget)
@@ -204,7 +220,7 @@ for subfolder_name in benchmark_folders:
                         file_content = file.read()
                         for op in operations:
                             nb_occurrences = len(re.findall(rf'\b{op}', file_content))
-                            operation_stats[op].append(int(nb_occurrences))
+                            operation_stats[op].append(int(nb_occurrences))      
                 ####################################################################
                 bench_name = subfolder_name+"_"+str(slot_count)
                 row=[bench_name]
@@ -215,7 +231,7 @@ for subfolder_name in benchmark_folders:
                             result = "N/A"
                         else : 
                             result = statistics.median(values) 
-                            if key == "compile_time (s)" or key == "execution_time (s)" :
+                            if key in ["compile_time (s)","circuit_execution_time (s)","galois_keys_generation_time (s)","total_execution_time (s)"] :
                                 result = result / 1000
                                 result = format(result, ".3f")
                             row.append(result) if values else None
@@ -247,7 +263,8 @@ for subfolder_name in polynomial_folders:
                     operation_stats = {
                     "add": [], "sub": [], "multiply_plain": [], "rotate_rows": [],
                     "negate": [], "multiply": [], "Depth": [], "Multiplicative Depth": [],
-                    "compile_time (s)": [], "execution_time (s)": [],"Remaining_noise_budget": []
+                    "compile_time (s)": [], "circuit_execution_time (s)": [], "galois_keys_generation_time (s)": [], 
+                    "total_execution_time (s)": [], "Remaining_noise_budget": [], 'rotation_keys_size (MB)': []
                     }
                     benchmark_name = f'tree_{regime}_{tree_depth}_{instance}'
                     print(f"Benchmark '{benchmark_name}' will be run...")
@@ -336,15 +353,30 @@ for subfolder_name in polynomial_folders:
                                             lines = result.stdout.splitlines()
                                             comp = 0
                                             for line in lines:
-                                                if 'execution_time_(ms):' in line:
+                                                if 'circuit_execution_time_(ms):' in line:
                                                     #print(f"==> execution time {line.split()[0]}")
                                                     execution_time = float(line.split()[1])
-                                                    operation_stats["execution_time (s)"].append(execution_time)
-                                                ####################################
+                                                    operation_stats["circuit_execution_time (s)"].append(execution_time)
+                                                    ####################################
+                                                if 'galois_keys_generation_time_(ms):' in line:
+                                                    #print(f"==> execution time {line.split()[0]}")
+                                                    execution_time = float(line.split()[1])
+                                                    operation_stats["galois_keys_generation_time (s)"].append(execution_time)
+                                                    ####################################
+                                                if 'total_execution_time_(ms):' in line:
+                                                    #print(f"==> execution time {line.split()[0]}")
+                                                    execution_time = float(line.split()[1])
+                                                    operation_stats["total_execution_time (s)"].append(execution_time)
+                                                    ####################################
+                                                if 'rotation_keys_size_(MB):' in line:
+                                                    #print(f"==> execution time {line.split()[0]}")
+                                                    keys_size = float(line.split()[1])
+                                                    operation_stats["rotation_keys_size (MB)"].append(keys_size)
+                                                    ####################################                                          
                                                 if 'Remaining_noise_budget:' in line:
                                                     Remaining_noise_budget=int(line.split()[1])
                                                     operation_stats["Remaining_noise_budget"].append(Remaining_noise_budget)
-                                                ##############
+                                                    ##############
                                                 if comp == 2 :
                                                     break
 
@@ -368,7 +400,7 @@ for subfolder_name in polynomial_folders:
                                 result = "N/A"
                             else : 
                                 result = statistics.median(values) 
-                                if key == "compile_time (s)" or key == "execution_time (s)" :
+                                if key in ["compile_time (s)","circuit_execution_time (s)","galois_keys_generation_time (s)","total_execution_time (s)"] :
                                     result = result / 1000
                                     result = format(result, ".3f")
                                 row.append(result) if values else None
