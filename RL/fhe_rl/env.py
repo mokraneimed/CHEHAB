@@ -142,7 +142,7 @@ class fheEnv(gym.Env):
                     k, _ = match
                     new_expr_tree = rule_obj.apply_rule(expr_tree, path=k)
                     temp = expr_to_str(new_expr_tree)
-                    if calculate_cost(new_expr_tree) < self.current_cost:
+                    if calculate_cost(new_expr_tree, w_keys=0.0) < self.current_cost:
                         isValid = False
                         break
                     if self.vectorisation_potential(temp) > vectorization_potenial:
@@ -162,7 +162,7 @@ class fheEnv(gym.Env):
         return ( ( self.current_cost - new_cost) / self.current_cost )
     
     def get_cost(self, expr: str) -> float:
-        return calculate_cost(parse_sexpr(expr))
+        return calculate_cost(parse_sexpr(expr), w_keys=0.0)
     
     def _embed_expression(self, expr: str) -> np.ndarray:
         expr_tree = parse_sexpr(expr)

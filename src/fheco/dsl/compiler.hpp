@@ -67,7 +67,7 @@ public:
   
   static void gen_he_code(
     const std::shared_ptr<ir::Func> &func, std::ostream &header_os, std::string_view header_name,
-    std::ostream &source_os, std::size_t rotation_keys_threshold = std::numeric_limits<std::size_t>::max(),
+    std::ostream &source_os, std::size_t rotation_keys_threshold = 2,
     bool lazy_relin = false,param_select::EncParams::SecurityLevel security_level=param_select::EncParams::SecurityLevel::tc128);
   static inline const std::shared_ptr<ir::Func> &active_func()
   {
