@@ -29,7 +29,8 @@ CYAN    = "\033[36m"
 
 
 class fheEnv(gym.Env):
-    def __init__(self, rules_list, expressions, max_positions=2,embeddings_model=None):
+
+    def __init__(self, rules_list, expressions, max_positions=2,embeddings_model=None, keys_weight_schedule=None):
         
         super().__init__()
         self.rules = rules_list
@@ -43,6 +44,11 @@ class fheEnv(gym.Env):
         self.initial_vectorization_potential = 0
         self.vectorizations_applied = 0
         self.vectorization_helper = 0
+
+        self.keys_weight_schedule = keys_weight_schedule  
+        self.current_keys_weight = 0.0
+        self.current_global_timestep = 0
+
         self.action_space = spaces.Discrete(len(self.rules.keys()) * self.max_positions)
         self.observation_space = spaces.Dict({
             "observation": spaces.Box(
@@ -52,7 +58,16 @@ class fheEnv(gym.Env):
         })
         self.reset()
 
-    
+    def set_timestep(self, timestep: int):
+        """
+        Called externally to update the global timestep.
+        This is called by the TimestepUpdater callback.
+        """
+        self.current_global_timestep = timestep
+        
+        # Update keys weight based on new timestep
+        if self.keys_weight_schedule is not None:
+            self.current_keys_weight = self.keys_weight_schedule(timestep)
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -62,6 +77,7 @@ class fheEnv(gym.Env):
         self.current_index = (self.current_index + 1) % len(self.expressions)
         self.initial_expression = self.expression
         self.steps = 0
+
         self.initial_cost = self.current_cost = self.get_cost(self.expression)
         return {
             "observation": self._embed_expression(self.expression),
@@ -106,6 +122,8 @@ class fheEnv(gym.Env):
         print(f"{BOLD}{MAGENTA}Reward        {RESET}: {reward_color}{reward}{RESET}")
         print(f"{BOLD}{MAGENTA}Rule name     {RESET}: {CYAN}{rule_name}{RESET}")
         print(f"{BOLD}{MAGENTA}At position   {RESET}: {BLUE}{pos_idx}{RESET}")
+        if self.current_keys_weight > 0:
+            print(f"{BOLD}{MAGENTA}Keys weight   {RESET}: {YELLOW}{self.current_keys_weight:.6f}{RESET}")
         print(f"{CYAN}{'-'*100}{RESET}")
         embedding = self._embed_expression(self.expression)
         if embedding is None:
@@ -142,7 +160,7 @@ class fheEnv(gym.Env):
                     k, _ = match
                     new_expr_tree = rule_obj.apply_rule(expr_tree, path=k)
                     temp = expr_to_str(new_expr_tree)
-                    if calculate_cost(new_expr_tree, w_keys=0.0) < self.current_cost:
+                    if calculate_cost(new_expr_tree, w_keys=self.current_keys_weight) < self.current_cost:
                         isValid = False
                         break
                     if self.vectorisation_potential(temp) > vectorization_potenial:
@@ -162,7 +180,7 @@ class fheEnv(gym.Env):
         return ( ( self.current_cost - new_cost) / self.current_cost )
     
     def get_cost(self, expr: str) -> float:
-        return calculate_cost(parse_sexpr(expr), w_keys=0.0)
+        return calculate_cost(parse_sexpr(expr), w_keys=self.current_keys_weight)
     
     def _embed_expression(self, expr: str) -> np.ndarray:
         expr_tree = parse_sexpr(expr)
