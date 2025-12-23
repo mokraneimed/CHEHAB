@@ -30,7 +30,7 @@ CYAN    = "\033[36m"
 
 class fheEnv(gym.Env):
 
-    def __init__(self, rules_list, expressions, max_positions=2,embeddings_model=None, keys_weight_schedule=None):
+    def __init__(self, rules_list, expressions, max_positions=2,embeddings_model=None, keys_weight_schedule=None, use_curriculum=True, phase_b_rule_prefix="rotate_", inference_mode=False):
         
         super().__init__()
         self.rules = rules_list
@@ -48,6 +48,22 @@ class fheEnv(gym.Env):
         self.keys_weight_schedule = keys_weight_schedule  
         self.current_keys_weight = 0.0
         self.current_global_timestep = 0
+        self.keys_cost_triggered = False
+
+
+        self.use_curriculum = use_curriculum
+        self.phase_b_rule_prefix = phase_b_rule_prefix
+        self.current_phase = "phase_a" if use_curriculum else "phase_b"
+
+        if inference_mode:
+            self.use_curriculum = False
+            self.current_keys_weight = 0.01
+
+        self._categorize_rules()
+
+        self.warmup_rollouts = 1  # Number of initial evaluations to skip checks
+        self.warmup_counter = 0
+        self.in_warmup = False
 
         self.action_space = spaces.Discrete(len(self.rules.keys()) * self.max_positions)
         self.observation_space = spaces.Dict({
@@ -58,6 +74,70 @@ class fheEnv(gym.Env):
         })
         self.reset()
 
+    def set_warmup(self, in_warmup: bool):
+        self.in_warmup = in_warmup
+
+    def increment_warmup(self):
+        self.warmup_counter += 1
+
+    def _categorize_rules(self):
+        self.phase_a_rules = []
+        self.phase_b_rules = []
+
+        for rule_name in self.rules.keys():
+            if rule_name == "END":
+                self.phase_a_rules.append(rule_name)
+                self.phase_b_rules.append(rule_name)
+            elif rule_name.startswith(self.phase_b_rule_prefix):
+                self.phase_b_rules.append(rule_name)
+            else:
+                self.phase_a_rules.append(rule_name)
+                self.phase_b_rules.append(rule_name)
+
+        if self.use_curriculum:
+            print(f"\n{'='*80}")
+            print(f"📚 CURRICULUM LEARNING ENABLED")
+            print(f"{'='*80}")
+            print(f"Phase A rules (objective A): {len(self.phase_a_rules)} rules")
+            print(f"Phase B rules (objective A+B): {len(self.phase_b_rules)} rules")
+            print(f"Phase B exclusive rules: {len(self.phase_b_rules) - len(self.phase_a_rules)} rules")
+            print(f"Exclusive rules: {[r for r in self.phase_b_rules if r not in self.phase_a_rules]}")
+            print(f"{'='*80}\n")                        
+
+    def _get_available_rules(self):
+        if not self.use_curriculum:
+            return list(self.rules.keys())
+        if self.current_phase == "phase_a":
+            return self.phase_a_rules
+        else:   
+            return self.phase_b_rules
+
+    def set_curriculum_phase(self, phase: str):
+        if phase not in ["phase_a", "phase_b"]:
+            raise ValueError(f"Invalid phase: {phase}. Must be 'phase_a' or 'phase_b'.")
+
+        old_phase = self.current_phase
+        self.current_phase = phase
+
+        old_count = len(self._get_available_rules_for_phase(old_phase))
+        new_count = len(self._get_available_rules_for_phase(phase))
+        
+        print(f"\n{'='*80}")
+        print(f"📚 CURRICULUM PHASE CHANGE: {old_phase} → {phase}")
+        print(f"{'='*80}")
+        print(f"Available rules: {old_count} → {new_count}")
+        if phase == "phase_b":
+            newly_available = [r for r in self.phase_b_rules if r not in self.phase_a_rules]
+            print(f"Newly available rules ({len(newly_available)}): {newly_available[:5]}{'...' if len(newly_available) > 5 else ''}")
+        print(f"{'='*80}\n")
+
+    def _get_available_rules_for_phase(self, phase):
+        if phase == "phase_a":
+            return self.phase_a_rules
+        else:
+            return self.phase_b_rules
+
+
     def set_timestep(self, timestep: int):
         """
         Called externally to update the global timestep.
@@ -66,8 +146,15 @@ class fheEnv(gym.Env):
         self.current_global_timestep = timestep
         
         # Update keys weight based on new timestep
-        if self.keys_weight_schedule is not None:
-            self.current_keys_weight = self.keys_weight_schedule(timestep)
+        if self.keys_cost_triggered and self.keys_weight_schedule is not None:
+            # self.current_keys_weight = self.keys_weight_schedule(timestep)
+            self.current_keys_weight = 0.01
+
+    def trigger_keys_cost(self):
+        self.keys_cost_triggered = True
+
+        if self.use_curriculum:
+            self.set_curriculum_phase("phase_b")        
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -193,7 +280,14 @@ class fheEnv(gym.Env):
     def get_action_mask(self) -> np.ndarray:
         mask = np.zeros(len(self.rules.keys()) * self.max_positions, dtype=np.float32)
         parsed = parse_sexpr(self.expression)
+
+        available_rules = self._get_available_rules()
+
         for rule_idx, rule_name in enumerate(self.rules.keys()):
+
+            if rule_name not in available_rules:
+                continue
+
             if rule_name == "END":
                 mask[rule_idx * self.max_positions] = 1.0
                 continue

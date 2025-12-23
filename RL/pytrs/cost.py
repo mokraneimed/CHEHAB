@@ -25,7 +25,8 @@ def operations_cost(expr: Expr) -> int:
             node_cost = OP * 250
         elif op == "<<":
             node_cost = VEC_OP * 50
-            visit_all_children = False
+            if not isinstance(expr.args[0], Op) or expr.args[0].op != "<<":
+                visit_all_children = False
         elif op == "Vec":
             node_cost = 0
         elif op == "VecAdd":
@@ -56,8 +57,12 @@ def operations_cost(expr: Expr) -> int:
 
         # 3) Recurse into children
         if visit_all_children:
-            for child in expr.args:
-                node_cost += operations_cost(child)
+            if op == "<<":
+                # Special case: only recurse into first child for shifts
+                node_cost += operations_cost(expr.args[0])
+            else:    
+                for child in expr.args:
+                    node_cost += operations_cost(child)
         # else:
         #     node_cost += operations_cost(expr.args[0] )  # Only recurse into the first child
 
