@@ -30,7 +30,7 @@ CYAN    = "\033[36m"
 
 class fheEnv(gym.Env):
 
-    def __init__(self, rules_list, expressions, max_positions=2,embeddings_model=None, keys_weight_schedule=None, use_curriculum=True, phase_b_rule_prefix="rotate_", inference_mode=False):
+    def __init__(self, rules_list, expressions, max_positions=2,embeddings_model=None, keys_weight_schedule=None, use_curriculum=True, phase_b_rule_prefix="rotate_", inference_mode=False, auto_transition = False, max_keys_weight = 1.0):
         
         super().__init__()
         self.rules = rules_list
@@ -40,6 +40,9 @@ class fheEnv(gym.Env):
         self.max_steps =    75
         self.max_expression_size = 10000
         self.initial_cost = 0
+
+        self.initial_cost_alt = 0
+
         self.embedding_dim = 256
         self.initial_vectorization_potential = 0
         self.vectorizations_applied = 0
@@ -55,15 +58,16 @@ class fheEnv(gym.Env):
         self.phase_b_rule_prefix = phase_b_rule_prefix
         self.current_phase = "phase_a" if use_curriculum else "phase_b"
 
+        self.auto_transition = auto_transition
+        self.max_keys_weight = max_keys_weight
+
         if inference_mode:
             self.use_curriculum = False
-            self.current_keys_weight = 0.01
+            self.current_keys_weight = self.max_keys_weight
 
         self._categorize_rules()
 
-        self.warmup_rollouts = 1  # Number of initial evaluations to skip checks
-        self.warmup_counter = 0
-        self.in_warmup = False
+        self.alternate_rewards_buffer = []  # Stores (step_idx, alt_reward) tuples
 
         self.action_space = spaces.Discrete(len(self.rules.keys()) * self.max_positions)
         self.observation_space = spaces.Dict({
@@ -74,11 +78,11 @@ class fheEnv(gym.Env):
         })
         self.reset()
 
-    def set_warmup(self, in_warmup: bool):
-        self.in_warmup = in_warmup
-
-    def increment_warmup(self):
-        self.warmup_counter += 1
+    def get_and_clear_alternate_rewards(self):
+        """Retrieve stored alternate rewards and clear buffer"""
+        rewards = np.array(self.alternate_rewards_buffer, dtype=np.float32)
+        self.alternate_rewards_buffer.clear()
+        return rewards
 
     def _categorize_rules(self):
         self.phase_a_rules = []
@@ -96,7 +100,7 @@ class fheEnv(gym.Env):
 
         if self.use_curriculum:
             print(f"\n{'='*80}")
-            print(f"📚 CURRICULUM LEARNING ENABLED")
+            print(f"CURRICULUM LEARNING ENABLED")
             print(f"{'='*80}")
             print(f"Phase A rules (objective A): {len(self.phase_a_rules)} rules")
             print(f"Phase B rules (objective A+B): {len(self.phase_b_rules)} rules")
@@ -123,7 +127,7 @@ class fheEnv(gym.Env):
         new_count = len(self._get_available_rules_for_phase(phase))
         
         print(f"\n{'='*80}")
-        print(f"📚 CURRICULUM PHASE CHANGE: {old_phase} → {phase}")
+        print(f"CURRICULUM PHASE CHANGE: {old_phase} → {phase}")
         print(f"{'='*80}")
         print(f"Available rules: {old_count} → {new_count}")
         if phase == "phase_b":
@@ -146,9 +150,14 @@ class fheEnv(gym.Env):
         self.current_global_timestep = timestep
         
         # Update keys weight based on new timestep
-        if self.keys_cost_triggered and self.keys_weight_schedule is not None:
-            # self.current_keys_weight = self.keys_weight_schedule(timestep)
-            self.current_keys_weight = 0.01
+        if not self.auto_transition:
+            if self.keys_weight_schedule is not None:
+                self.current_keys_weight = self.keys_weight_schedule(timestep)
+            else: 
+                print("Keys weight schedule is wrong")
+        elif self.keys_cost_triggered:
+            self.current_keys_weight = self.max_keys_weight
+                
 
     def trigger_keys_cost(self):
         self.keys_cost_triggered = True
@@ -166,6 +175,7 @@ class fheEnv(gym.Env):
         self.steps = 0
 
         self.initial_cost = self.current_cost = self.get_cost(self.expression)
+        self.initial_cost_alt = self.current_cost_alt = calculate_cost(parse_sexpr(self.expression), w_keys=self.max_keys_weight)
         return {
             "observation": self._embed_expression(self.expression),
             "action_mask": self.get_action_mask()
@@ -188,6 +198,9 @@ class fheEnv(gym.Env):
             terminated = True
             truncated = False
             reward = self.calculate_final_reward()
+            if not self.keys_cost_triggered:
+                reward_alt = self.calculate_final_reward_alt()
+                self.alternate_rewards_buffer.append(reward_alt)
         else:
             parsed = parse_sexpr(self.expression)
             rule_obj = self.rules[rule_name]
@@ -197,11 +210,19 @@ class fheEnv(gym.Env):
             temp = expr_to_str(new_expr_tree)
             self.expression = temp
             new_cost = self.get_cost(self.expression)
+            new_cost_alt = calculate_cost(parse_sexpr(self.expression), w_keys=self.max_keys_weight)
             reward = self.calculate_intermediate_reward(new_cost)
-            self.current_cost = new_cost               
+            if not self.keys_cost_triggered:
+                reward_alt = self.calculate_intermediate_reward_alt(new_cost_alt)
+                self.alternate_rewards_buffer.append(reward_alt)
+            self.current_cost = new_cost
+            self.current_cost_alt = new_cost_alt               
             if (self.steps >= self.max_steps):
                 terminated = True
                 reward = self.calculate_final_reward()
+                if not self.keys_cost_triggered:
+                    reward_alt = self.calculate_final_reward_alt()
+                    self.alternate_rewards_buffer.append(reward_alt)
         info = {"expression": self.expression}
         reward_color = GREEN if reward >= 0 else RED
         print(f"{BOLD}{MAGENTA}New expression{RESET}: {YELLOW}{self.expression}{RESET}")
@@ -217,6 +238,9 @@ class fheEnv(gym.Env):
             terminated = True
             truncated = True
             reward = self.calculate_final_reward()
+            if not self.keys_cost_triggered:
+                reward_alt = self.calculate_final_reward_alt()
+                self.alternate_rewards_buffer.append(reward_alt)
         else:
             terminated = terminated or (self.steps >= self.max_steps)
         if terminated or truncated:
@@ -261,10 +285,23 @@ class fheEnv(gym.Env):
         if self.initial_cost == 0:
             return 0.0
         return (self.initial_cost - self.current_cost) / self.initial_cost * 100
+    
+    def calculate_final_reward_alt(self) -> float:
+        if self.initial_cost_alt == 0:
+            return 0.0
+        return (self.initial_cost_alt - self.current_cost_alt) / self.initial_cost_alt * 100
+    
     def calculate_intermediate_reward(self,new_cost) -> float:
         if self.current_cost == 0:
             return 0.0
         return ( ( self.current_cost - new_cost) / self.current_cost )
+    
+    def calculate_intermediate_reward_alt(self, new_cost_alt) -> float:
+        """Calculate reward with Phase 2 keys_weight"""
+        if self.current_cost_alt == 0:
+            return 0.0
+        # Use fixed 0.01 for Phase 2
+        return (self.current_cost_alt - new_cost_alt) / self.current_cost_alt
     
     def get_cost(self, expr: str) -> float:
         return calculate_cost(parse_sexpr(expr), w_keys=self.current_keys_weight)

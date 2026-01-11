@@ -7,7 +7,7 @@ from stable_baselines3 import PPO
 from .utils  import load_expressions, create_rules, load_embeddings
 from .logger import log_training_details
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize,DummyVecEnv
-from .callbacks import linear_schedule, EntCoefScheduler, KeysWeightLogger, TimestepUpdater, DynamicEntCoefScheduler, CustomEvalCallback, WarmupPhaseCallback
+from .callbacks import linear_schedule, EntCoefScheduler, KeysWeightLogger, TimestepUpdater, DynamicEntCoefScheduler, CustomEvalCallback
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 
 from .schedules import step_schedule, linear_schedule as linear_schedule_keys, sigmoid_schedule, cosine_schedule
@@ -27,7 +27,7 @@ def set_random_seed(seed: int = 42):
     torch.backends.cudnn.benchmark = False
     os.environ['PYTHONHASHSEED'] = str(seed)
 
-def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 1_000_000, num_envs: int = 8, keys_schedule_type="step", transition_point=0.75, seed: int = 42, auto_transition: bool = False):
+def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 1_000_000, num_envs: int = 8, keys_schedule_type="step", transition_point=0.75, seed: int = 42, auto_transition: bool = False, max_keys_weight: int = 1.0, use_curriculum: bool = False):
     set_random_seed(seed)
     benchmarks = load_expressions("./fhe_rl/datasets/benchmarks.txt") 
     expressions = load_expressions(expressions_file, benchmarks)
@@ -42,13 +42,13 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
     os.makedirs(checkpoint_dir, exist_ok=True)
 
     if keys_schedule_type == 'step':
-        keys_weight_schedule = step_schedule(total_timesteps, transition_point=transition_point)
+        keys_weight_schedule = step_schedule(total_timesteps, transition_point=transition_point, max_value=max_keys_weight)
     elif keys_schedule_type == 'linear':
-        keys_weight_schedule = linear_schedule_keys(total_timesteps, start_point=transition_point)
+        keys_weight_schedule = linear_schedule_keys(total_timesteps, start_point=transition_point, max_value=max_keys_weight)
     elif keys_schedule_type == 'sigmoid':
-        keys_weight_schedule = sigmoid_schedule(total_timesteps, midpoint=transition_point, steepness=10)
+        keys_weight_schedule = sigmoid_schedule(total_timesteps, midpoint=transition_point, steepness=10, max_value=max_keys_weight)
     elif keys_schedule_type == 'cosine':
-        keys_weight_schedule = cosine_schedule(total_timesteps, start_point=transition_point)
+        keys_weight_schedule = cosine_schedule(total_timesteps, start_point=transition_point, max_value=max_keys_weight)
     else:
         raise ValueError(f"Unknown schedule type: {keys_schedule_type}")
 
@@ -64,23 +64,10 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
             print(f"Found checkpoint: {checkpoint_path}")
             print(f"Resuming from step {steps_done}")
 
-    # def make_env(seed, expressions):
-    #     def _init():
-    #         set_random_seed(seed)  # Seed the subprocess
-    #         env = Monitor(fheEnv(rules_list, expressions, max_positions=max_positions, 
-    #                             embeddings_model=embeddings_model, 
-    #                             keys_weight_schedule=lambda t: 0.0,
-    #                             seed=seed))
-    #         return env
-    #     return _init
-
-    # env = SubprocVecEnv([make_env(seed + i, expressions=expressions) for i in range(num_envs)], start_method='spawn')
-    # val_env = DummyVecEnv([make_env(seed + num_envs, expressions=benchmarks)])
-
-    def make_env(): return Monitor(fheEnv(rules_list, expressions, max_positions=max_positions, embeddings_model=embeddings_model, keys_weight_schedule = lambda t: 0.0))
+    def make_env(): return Monitor(fheEnv(rules_list, expressions, max_positions=max_positions, embeddings_model=embeddings_model, keys_weight_schedule = keys_weight_schedule, auto_transition=auto_transition, max_keys_weight=max_keys_weight, use_curriculum=use_curriculum))
     env = SubprocVecEnv([make_env for _ in range(num_envs)], start_method='spawn')    
     val_env = DummyVecEnv([
-    lambda: Monitor(fheEnv(rules_list, benchmarks, max_positions=max_positions,embeddings_model=embeddings_model, keys_weight_schedule=lambda t: 0.0))
+    lambda: Monitor(fheEnv(rules_list, benchmarks, max_positions=max_positions,embeddings_model=embeddings_model, max_keys_weight=max_keys_weight, use_curriculum=use_curriculum))
     ])
     ent_schedule = linear_schedule(0.1)
     model_params = {
@@ -129,7 +116,7 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
     num_benchmarks = len(benchmarks)
 
     checkpoint_callback = CheckpointCallback(
-        save_freq=80000,
+        save_freq=8000,
         save_path=checkpoint_dir,
         name_prefix="rl_model",
         save_replay_buffer=False,
@@ -137,17 +124,18 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
         verbose=1
     )
 
-    ent_scheduler = DynamicEntCoefScheduler(total_timesteps=total_timesteps)
+    ent_scheduler = DynamicEntCoefScheduler(total_timesteps=total_timesteps, auto_transition=auto_transition, transition_point=transition_point, verbose=1)
 
     eval_callback = CustomEvalCallback(
             val_env, 
             best_model_save_path=f"./eval/best_model_{run_name}", 
             log_path=tensorboard_log_dir, 
-            eval_freq=4096,
+            eval_freq=12000,
             n_eval_episodes=num_benchmarks,
             deterministic=True, 
             render=False, 
             verbose=1,
+            auto_transition=auto_transition,
             ent_scheduler=ent_scheduler
     )
 
@@ -169,8 +157,8 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
         remaining_steps = total_timesteps
         print(f"Starting fresh training: {total_timesteps} total steps")
 
-    warmup_callback = WarmupPhaseCallback(verbose=1)
-    timestep_updater = TimestepUpdater(verbose=1)
+    
+    timestep_updater = TimestepUpdater(total_timesteps=total_timesteps, auto_transition=auto_transition, transition_point=transition_point, verbose=1)
     keys_logger = KeysWeightLogger(verbose=1)
 
 
