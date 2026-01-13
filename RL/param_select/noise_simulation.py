@@ -65,7 +65,7 @@ def simulate_noise_bfv(noise_estimates:NoiseEstimation, exp:Expr):
             if term.op == "Vec":
                 for arg in term.args:
                     arg_noise = 0
-                    if term_type(arg) == TermType.cipher or (isinstance(arg, Op) and term.op == "Vec"):   
+                    if term_type(arg) == TermType.cipher or (isinstance(arg, Op) and arg.op == "Vec"):   
                         arg_it = nodes_noise.get(arg, None)
                         if arg_it is None:
                             raise ValueError("parent handled before child")

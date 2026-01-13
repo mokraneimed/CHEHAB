@@ -10,7 +10,23 @@ from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize,DummyVe
 from .callbacks import linear_schedule, EntCoefScheduler
 from stable_baselines3.common.callbacks import EvalCallback
 
-def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 1_000_000, num_envs: int = 8):
+import random
+import numpy as np
+import torch
+
+def set_random_seed(seed: int = 42):
+    """Set random seed for reproducibility"""
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    os.environ['PYTHONHASHSEED'] = str(seed)
+
+def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 1_000_000, num_envs: int = 8, seed: int = 42):
+    set_random_seed(seed)
     benchmarks = load_expressions("./fhe_rl/datasets/benchmarks.txt") 
     expressions = load_expressions(expressions_file, benchmarks)
     max_positions = 16
@@ -39,6 +55,7 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
         "ent_coef": 0.1,
         "verbose": 1,
         "tensorboard_log": tensorboard_log_dir,
+        "seed": seed,
         "policy_kwargs": {
             "ent_coef": 0.1,
             "rule_dim":      len(rules_list),
@@ -46,6 +63,7 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
             "rule_hidden_dims":   [64, 32],
             "pos_hidden_dims":    [32, 32],
             "value_hidden_dims":    [128, 64, 32],
+            "seed": seed,
         }
     }
     model = PPO(**model_params)

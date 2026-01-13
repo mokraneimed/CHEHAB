@@ -21,6 +21,13 @@ class HierarchicalMaskablePolicy(nn.Module):
 
     def __init__(self, observation_space: gym.Space, action_space: gym.Space,  lr_schedule: Union[float, Any], **kwargs):
         super().__init__()
+
+        seed = kwargs.pop("seed", None)
+        if seed is not None:
+            torch.manual_seed(seed)
+            torch.cuda.manual_seed(seed)
+            np.random.seed(seed)         
+
         self.rule_dim: int       = kwargs.pop("rule_dim", 5)
         self.max_positions: int  = kwargs.pop("max_positions", 32)
         features_dim: int       = kwargs.pop("features_dim", 256)
@@ -30,9 +37,9 @@ class HierarchicalMaskablePolicy(nn.Module):
         value_hidden_dims       = kwargs.pop("value_hidden_dims", [256, 128, 64])
 
         self.encoder = CustomFeaturesExtractor(observation_space, features_dim)
-        self.rule_head = mlp(features_dim, rule_hidden_dims, self.rule_dim, layernorm=True)
-        self.pos_head  = mlp(features_dim + self.rule_dim, pos_hidden_dims, self.max_positions, layernorm=True)
-        self.value_net = mlp(features_dim, value_hidden_dims, 1, layernorm=True)
+        self.rule_head = mlp(features_dim, rule_hidden_dims, self.rule_dim, layernorm=True, seed=seed)
+        self.pos_head  = mlp(features_dim + self.rule_dim, pos_hidden_dims, self.max_positions, layernorm=True, seed=seed)
+        self.value_net = mlp(features_dim, value_hidden_dims, 1, layernorm=True, seed=seed)
 
         actor_params  = list(self.encoder.parameters()) + list(self.rule_head.parameters()) + list(self.pos_head.parameters())
         critic_params = self.value_net.parameters()
