@@ -29,8 +29,8 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
         "policy": HierarchicalMaskablePolicy,
         "env": env,
         "learning_rate": 1e-4,
-        "n_steps": 2048,
-        "batch_size": 256,
+        "n_steps": 1024,
+        "batch_size": 128,
         "gamma": 0.99,
         "gae_lambda": 0.98,
         "n_epochs": 15,
@@ -43,9 +43,9 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
             "ent_coef": 0.1,
             "rule_dim":      len(rules_list),
             "max_positions": max_positions,
-            "rule_hidden_dims":   [128, 64],
-            "pos_hidden_dims":    [64, 64],
-            "value_hidden_dims":    [256, 128, 64],
+            "rule_hidden_dims":   [64, 32],
+            "pos_hidden_dims":    [32, 32],
+            "value_hidden_dims":    [128, 64, 32],
         }
     }
     model = PPO(**model_params)
@@ -63,7 +63,7 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
         val_env, 
         best_model_save_path=f"./eval/best_model_{run_name}", 
         log_path=tensorboard_log_dir, 
-        eval_freq=10000,
+        eval_freq=1024,
         n_eval_episodes=num_benchmarks,
         deterministic=True, 
         render=False, 

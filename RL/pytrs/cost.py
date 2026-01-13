@@ -48,10 +48,13 @@ def operations_cost(expr: Expr, params) -> int:
         op = expr.op
         visit_all_children = True
         if op in ("+", "Add", "-", "Minus"):
-            if term_type(expr.args[0]) == term_type(expr.args[1]) == TermType.cipher:
-                node_cost = sc_ct_ct_add * 250
+            if len(expr.args) == 2:
+                if term_type(expr.args[0]) == term_type(expr.args[1]) == TermType.cipher:
+                    node_cost = sc_ct_ct_add * 250
+                else:
+                    node_cost = sc_pl_ct_add * 250
             else:
-                node_cost = sc_pl_ct_add * 250
+                node_cost = sc_ct_ct_add * 250        
         elif op in ("*", "Mul"):
             if term_type(expr.args[0]) == term_type(expr.args[1]) == TermType.cipher:
                 node_cost = sc_ct_ct_mul * 250
@@ -61,8 +64,9 @@ def operations_cost(expr: Expr, params) -> int:
             node_cost = sc_ct_ct_add * 250
         elif op == "<<":
             node_cost = rotate_cost
+            visit_all_children = False
         elif op == "Vec":
-            node_cost = STRUCTURE
+            node_cost = 0
         elif op == "VecAdd":
             second_child = expr.args[1] if len(expr.args) > 1 else None
             if term_type(expr.args[0]) == term_type(expr.args[1]) == TermType.cipher:
@@ -78,7 +82,7 @@ def operations_cost(expr: Expr, params) -> int:
             if term_type(expr.args[0]) == term_type(expr.args[1]) == TermType.cipher:
                 node_cost = vec_ct_ct_add
             else:
-                node_cost = vec_ct_ct_add
+                node_cost = vec_pl_ct_add
             # if isinstance(second_child, Op):
             #     if second_child.op == "<<":
             #         node_cost = vec_ct_ct_add * 1051
@@ -245,7 +249,7 @@ def rotations_cost(expr: Expr, parent: Expr = None) -> float:
     return 0.0
 def calculate_cost(expr: Expr,
                params,
-               w_ops=0.0028,
+               w_ops=1.0,
                w_rot=1.0,
                w_depth=1.0,
                w_muldepth=1.0) -> float:
