@@ -173,5 +173,6 @@ def topological_sort(exp):
                 call_stack.append(Call(top_term, True))
                 if isinstance(top_term, Op):
                     for arg in reversed(top_term.args):
-                        call_stack.append(Call(arg, False))
+                        if arg not in terms_marks or terms_marks[arg] != Mark.perm:
+                            call_stack.append(Call(arg, False))
     return sorted_terms

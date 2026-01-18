@@ -144,7 +144,7 @@ class fheEnv(gym.Env):
                     k, _ = match
                     new_expr_tree = rule_obj.apply_rule(expr_tree, path=k)
                     temp = expr_to_str(new_expr_tree)
-                    if calculate_cost(new_expr_tree) < self.current_cost:
+                    if self.get_cost(new_expr_tree) < self.current_cost:
                         isValid = False
                         break
                     if self.vectorisation_potential(temp) > vectorization_potenial:
@@ -172,6 +172,10 @@ class fheEnv(gym.Env):
             "q": params_bfv.q,
             "t": params_bfv.t
         }
+        print("slot count:", slot_count)
+        print("N:", params_bfv.n)
+        print("Q:", params_bfv.q)
+        print("T:", params_bfv.t)
         return calculate_cost(parsed_expr, params)
     
     def _embed_expression(self, expr: str) -> np.ndarray:

@@ -7,7 +7,7 @@ from bfv_values import security_standard, bfv_noise_estimates_seal, SecurityLeve
 MOD_BIT_COUNT_MAX = 60
 MAX_N = 32768
 
-def select_parameters_bfv(plain_mod_size, slot_count, expr, sec_level=None):
+def select_parameters_bfv(plain_mod_size, slot_count, expr, sec_level=SecurityLevel.tc128):
     while (plain_mod_size not in bfv_noise_estimates_seal 
             and plain_mod_size < MOD_BIT_COUNT_MAX):
         plain_mod_size += 1
