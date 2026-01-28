@@ -23,7 +23,7 @@ def run_agent(expressions_file: str,embeddings_model, model_filepath: str,output
     end_time = time.perf_counter()
     elapsed_seconds = end_time - start_time
     env = DummyVecEnv([
-    lambda: Monitor(fheEnv(rules_list, expressions, max_positions=max_positions,embeddings_model=embeddings_model, inference_mode=True))
+    lambda: Monitor(fheEnv(rules_list, expressions, max_positions=max_positions,embeddings_model=embeddings_model, inference_mode=True, max_keys_weight=0.0))
     ])
     model = PPO(
         policy=HierarchicalMaskablePolicy,

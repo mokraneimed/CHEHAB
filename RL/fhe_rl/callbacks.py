@@ -44,13 +44,14 @@ class TimestepUpdater(BaseCallback):
     keys weight schedule, even when resuming from checkpoints.
     """
     
-    def __init__(self, total_timesteps, auto_transition = False, transition_point=0.75, verbose=0):
+    def __init__(self, total_timesteps, auto_transition = False, transition_point=0.75, update_buffer=False, verbose=0):
         super().__init__(verbose)
         self.last_logged_timestep = None
         self.total_timesteps = total_timesteps
         self.auto_transition = auto_transition
         self.transition_point = transition_point
         self.buffer_updated = False
+        self.update_buffer = update_buffer
 
     def _on_training_start(self) -> None:
         """
@@ -92,7 +93,7 @@ class TimestepUpdater(BaseCallback):
             if hasattr(self.training_env, 'set_timestep'):
                 self.training_env.set_timestep(current_timestep)
 
-        if not self.auto_transition and not self.buffer_updated:
+        if self.update_buffer and not self.auto_transition and not self.buffer_updated:
            if current_timestep >= self.total_timesteps * self.transition_point:
                update_buffer(self.training_env, self.model)
                self.buffer_updated = True
@@ -185,7 +186,7 @@ class DynamicEntCoefScheduler(BaseCallback):
         return True
 
 class CustomEvalCallback(EvalCallback):
-    def __init__(self, *args, auto_transition = False, ent_scheduler=None, **kwargs):
+    def __init__(self, *args, auto_transition = False, ent_scheduler=None, update_buffer=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.save_file = 'mean_rewards.txt'
         self.previous_mean_reward = None
@@ -195,6 +196,7 @@ class CustomEvalCallback(EvalCallback):
         self.keys_cost_triggered = False
         self.ent_scheduler = ent_scheduler
         self.auto_transition = auto_transition
+        self.update_buffer = update_buffer
 
 
 
@@ -226,7 +228,8 @@ class CustomEvalCallback(EvalCallback):
                         self.counter += 1
                         if self.counter >= self.counter_threshold:
                             self.keys_cost_triggered = True
-                            update_buffer(self.training_env, self.model)
+                            if self.update_buffer:
+                                update_buffer(self.training_env, self.model)
                             # self.in_warmup = True
                             # self.training_env.env_method('set_warmup', True)
                             print(f"No improvement in mean reward for {self.counter} evaluations. New objective triggered.")

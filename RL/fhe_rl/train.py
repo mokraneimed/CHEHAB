@@ -27,7 +27,8 @@ def set_random_seed(seed: int = 42):
     torch.backends.cudnn.benchmark = False
     os.environ['PYTHONHASHSEED'] = str(seed)
 
-def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 1_000_000, num_envs: int = 8, keys_schedule_type="step", transition_point=0.75, seed: int = 42, auto_transition: bool = False, max_keys_weight: int = 1.0, use_curriculum: bool = False):
+def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 1_000_000, num_envs: int = 8, keys_schedule_type="step", transition_point=0.75, seed: int = 42, auto_transition: bool = False, max_keys_weight: int = 1.0, use_curriculum: bool = False, 
+                    update_buffer: bool = False):
     set_random_seed(seed)
     benchmarks = load_expressions("./fhe_rl/datasets/benchmarks.txt") 
     expressions = load_expressions(expressions_file, benchmarks)
@@ -136,7 +137,8 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
             render=False, 
             verbose=1,
             auto_transition=auto_transition,
-            ent_scheduler=ent_scheduler
+            ent_scheduler=ent_scheduler,
+            update_buffer=update_buffer
     )
 
     # eval_callback = EvalCallback(
@@ -158,7 +160,7 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
         print(f"Starting fresh training: {total_timesteps} total steps")
 
     
-    timestep_updater = TimestepUpdater(total_timesteps=total_timesteps, auto_transition=auto_transition, transition_point=transition_point, verbose=1)
+    timestep_updater = TimestepUpdater(total_timesteps=total_timesteps, auto_transition=auto_transition, transition_point=transition_point, update_buffer=update_buffer, verbose=1)
     keys_logger = KeysWeightLogger(verbose=1)
 
 
