@@ -168,8 +168,8 @@ def load_expressions(file_path: str,validation_exprs = []):
                 if  not (str(vec_size) in recap.keys()):
                     continue
                 token_seq = get_token_sequence(exp_str)
-                if token_seq in validation_token_set:
-                    continue
+                # if token_seq in validation_token_set:
+                    # continue
 
                 if token_seq not in unique_expressions:
                     recap[str(vec_size)] += 1

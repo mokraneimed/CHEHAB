@@ -7,7 +7,7 @@ from stable_baselines3 import PPO
 from .utils  import load_expressions, create_rules, load_embeddings
 from .logger import log_training_details
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize,DummyVecEnv
-from .callbacks import linear_schedule, EntCoefScheduler, KeysWeightLogger, TimestepUpdater, DynamicEntCoefScheduler, CustomEvalCallback
+from .callbacks import linear_schedule, EntCoefScheduler, KeysWeightLogger, TimestepUpdater, DynamicEntCoefScheduler, CustomEvalCallback, PreferenceSamplerCallback
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 
 from .schedules import step_schedule, linear_schedule as linear_schedule_keys, sigmoid_schedule, cosine_schedule
@@ -71,12 +71,14 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
     lambda: Monitor(fheEnv(rules_list, benchmarks, max_positions=max_positions,embeddings_model=embeddings_model, max_keys_weight=max_keys_weight, use_curriculum=use_curriculum))
     ])
     ent_schedule = linear_schedule(0.1)
+    ent_callback = EntCoefScheduler(ent_schedule, verbose=1)
     model_params = {
         "policy": HierarchicalMaskablePolicy,
         "env": env,
         "learning_rate": 1e-4,
-        "n_steps": 2048,
-        "batch_size": 256,
+        "features_dim": 258,
+        "n_steps": 64,
+        "batch_size": 8,
         "gamma": 0.99,
         "gae_lambda": 0.98,
         "n_epochs": 15,
@@ -125,32 +127,32 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
         verbose=1
     )
 
-    ent_scheduler = DynamicEntCoefScheduler(total_timesteps=total_timesteps, auto_transition=auto_transition, transition_point=transition_point, verbose=1)
+    # ent_scheduler = DynamicEntCoefScheduler(total_timesteps=total_timesteps, auto_transition=auto_transition, transition_point=transition_point, verbose=1)
 
-    eval_callback = CustomEvalCallback(
-            val_env, 
-            best_model_save_path=f"./eval/best_model_{run_name}", 
-            log_path=tensorboard_log_dir, 
-            eval_freq=12000,
-            n_eval_episodes=num_benchmarks,
-            deterministic=True, 
-            render=False, 
-            verbose=1,
-            auto_transition=auto_transition,
-            ent_scheduler=ent_scheduler,
-            update_buffer=update_buffer
-    )
-
-    # eval_callback = EvalCallback(
-    #     val_env, 
-    #     best_model_save_path=f"./eval/best_model_{run_name}", 
-    #     log_path=tensorboard_log_dir, 
-    #     eval_freq=8000,
-    #     n_eval_episodes=num_benchmarks,
-    #     deterministic=True, 
-    #     render=False, 
-    #     verbose=1
+    # eval_callback = CustomEvalCallback(
+    #         val_env, 
+    #         best_model_save_path=f"./eval/best_model_{run_name}", 
+    #         log_path=tensorboard_log_dir, 
+    #         eval_freq=12000,
+    #         n_eval_episodes=num_benchmarks,
+    #         deterministic=True, 
+    #         render=False, 
+    #         verbose=1,
+    #         auto_transition=auto_transition,
+    #         ent_scheduler=ent_scheduler,
+    #         update_buffer=update_buffer
     # )
+
+    eval_callback = EvalCallback(
+        val_env, 
+        best_model_save_path=f"./eval/best_model_{run_name}", 
+        log_path=tensorboard_log_dir, 
+        eval_freq=64,
+        n_eval_episodes=num_benchmarks,
+        deterministic=True, 
+        render=False, 
+        verbose=1
+    )
 
     if checkpoint_path:
         remaining_steps = total_timesteps - steps_done
@@ -163,13 +165,18 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
     timestep_updater = TimestepUpdater(total_timesteps=total_timesteps, auto_transition=auto_transition, transition_point=transition_point, update_buffer=update_buffer, verbose=1)
     keys_logger = KeysWeightLogger(verbose=1)
 
+    pref_callback = PreferenceSamplerCallback(
+        use_cl=False, 
+        alpha=1.0,  # Pass it here
+        total_timesteps=total_timesteps,
+        verbose=1
+    )
 
     model.learn(
         total_timesteps=remaining_steps, 
         log_interval=1, 
         progress_bar=True, 
-        # callback=[eval_callback, ent_scheduler, warmup_callback, checkpoint_callback, timestep_updater, keys_logger],
-        callback=[eval_callback, ent_scheduler, checkpoint_callback, timestep_updater, keys_logger],
+        callback=[pref_callback, ent_callback, eval_callback, checkpoint_callback],
         reset_num_timesteps = (checkpoint_path is None)
     )
     model.save(run_name)    
