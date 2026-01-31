@@ -72,11 +72,23 @@ class fheEnv(gym.Env):
         self.action_space = spaces.Discrete(len(self.rules.keys()) * self.max_positions)
         self.observation_space = spaces.Dict({
             "observation": spaces.Box(
-                low=-np.inf, high=np.inf, shape=(self.embedding_dim,), dtype=np.float32
+                low=-np.inf, high=np.inf, shape=(self.embedding_dim + 2,), dtype=np.float32
             ),
             "action_mask": spaces.Box(0, 1, (len(self.rules.keys()) * self.max_positions,), np.float32)
         })
+        self.current_w = np.array([0.5, 0.5], dtype=np.float32)
+        self.lambda_kl = 0.1
         self.reset()
+
+    def set_preference_vector(self, w):
+        """Set the preference vector for multi-objective optimization"""
+        self.current_w = np.array(w, dtype=np.float32)
+
+    def get_split_costs(self, expr_str):
+        parsed = parse_sexpr(expr_str)
+        ops = calculate_cost(parsed, w_keys=0.0)
+        keys = calculate_cost(parsed, w_keys=1.0) - ops
+        return ops, keys    
 
     def get_and_clear_alternate_rewards(self):
         """Retrieve stored alternate rewards and clear buffer"""
@@ -176,12 +188,23 @@ class fheEnv(gym.Env):
 
         self.initial_cost = self.current_cost = self.get_cost(self.expression)
         self.initial_cost_alt = self.current_cost_alt = calculate_cost(parse_sexpr(self.expression), w_keys=self.max_keys_weight)
-        return {
-            "observation": self._embed_expression(self.expression),
-            "action_mask": self.get_action_mask()
-        }, {}
+        
+        self.initial_ops, self.initial_keys = self.get_split_costs(self.expression)
+        self.curr_ops, self.curr_keys = self.get_split_costs(self.expression)
+        return self._get_obs(), {}
+        # return {
+        #     "observation": self._embed_expression(self.expression),
+        #     "action_mask": self.get_action_mask()
+        # }, {}
 
-    
+    def _get_obs(self):
+        emb = self._embed_expression(self.expression)
+        obs = np.concatenate([emb, self.current_w])
+        return {
+            "observation": obs,
+            "action_mask": self.get_action_mask()
+        }
+
     def step(self, action: int):
         self.steps += 1
         rule_idx = action // self.max_positions
@@ -211,7 +234,11 @@ class fheEnv(gym.Env):
             self.expression = temp
             new_cost = self.get_cost(self.expression)
             new_cost_alt = calculate_cost(parse_sexpr(self.expression), w_keys=self.max_keys_weight)
-            reward = self.calculate_intermediate_reward(new_cost)
+            # reward = self.calculate_intermediate_reward(new_cost)
+
+            new_ops, new_keys = self.get_split_costs(self.expression)
+            reward = self.calculate_intermediate_reward(new_ops, new_keys)
+
             if not self.keys_cost_triggered:
                 reward_alt = self.calculate_intermediate_reward_alt(new_cost_alt)
                 self.alternate_rewards_buffer.append(reward_alt)
@@ -282,19 +309,44 @@ class fheEnv(gym.Env):
         return isValid
     
     def calculate_final_reward(self) -> float:
-        if self.initial_cost == 0:
-            return 0.0
-        return (self.initial_cost - self.current_cost) / self.initial_cost * 100
-    
+        # if self.initial_cost == 0:
+        #     return 0.0
+        # return (self.initial_cost - self.current_cost) / self.initial_cost * 100
+
+        if self.initial_ops == 0:
+            r_ops = 0.0
+        else:
+            r_ops = (self.initial_ops - self.curr_ops) / self.initial_ops
+        r_keys = (self.initial_keys - self.curr_keys) / 5
+        r_vec = np.array([r_ops, r_keys])
+        reward_linear = np.dot(self.current_w, r_vec)
+        r_pos = np.maximum(0, r_vec) + 1e-6
+        weighted_r = self.current_w * r_pos
+        r_tilde = weighted_r / (np.sum(weighted_r))
+        kl_bonus = np.sum(r_tilde * np.log(r_tilde / 0.5))
+        total_reward = reward_linear + self.lambda_kl * kl_bonus
+        return total_reward * 100
+        
+        
     def calculate_final_reward_alt(self) -> float:
         if self.initial_cost_alt == 0:
             return 0.0
         return (self.initial_cost_alt - self.current_cost_alt) / self.initial_cost_alt * 100
     
-    def calculate_intermediate_reward(self,new_cost) -> float:
-        if self.current_cost == 0:
-            return 0.0
-        return ( ( self.current_cost - new_cost) / self.current_cost )
+    def calculate_intermediate_reward(self,new_ops,new_keys) -> float:
+        if self.curr_ops == 0:
+            r_ops = 0.0
+        else:
+            r_ops = (self.curr_ops - new_ops) / self.curr_ops
+        r_keys = (self.curr_keys - new_keys) / 5
+        r_vec = np.array([r_ops, r_keys])
+        reward_linear = np.dot(self.current_w, r_vec)
+        r_pos = np.maximum(0, r_vec) + 1e-6
+        weighted_r = self.current_w * r_pos
+        r_tilde = weighted_r / (np.sum(weighted_r))
+        kl_bonus = np.sum(r_tilde * np.log(r_tilde / 0.5))
+        total_reward = reward_linear + self.lambda_kl * kl_bonus
+        return total_reward
     
     def calculate_intermediate_reward_alt(self, new_cost_alt) -> float:
         """Calculate reward with Phase 2 keys_weight"""

@@ -260,6 +260,12 @@ class CustomEvalCallback(EvalCallback):
         return result    
       
 
+class PreferenceSamplerCallback(BaseCallback):
+    def __init__(self, use_cl=False, total_timesteps=1_000_000, verbose=0):
+        super().__init__(verbose)
+        self.use_cl = use_cl
+        self.total_timesteps = total_timesteps
+
 def linear_schedule(start: float, end: float = 0.0):
     def sched(progress_remaining):
         return (start - end) * progress_remaining + end
