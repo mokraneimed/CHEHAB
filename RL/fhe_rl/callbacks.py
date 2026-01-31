@@ -261,10 +261,35 @@ class CustomEvalCallback(EvalCallback):
       
 
 class PreferenceSamplerCallback(BaseCallback):
-    def __init__(self, use_cl=False, total_timesteps=1_000_000, verbose=0):
+    def __init__(self, use_cl=False, alpha=1.0, total_timesteps=1_000_000, verbose=0):
         super().__init__(verbose)
         self.use_cl = use_cl
+        self.alpha = alpha
         self.total_timesteps = total_timesteps
+    def _on_rollout_start(self) -> None:
+        progress = self.num_timesteps / self.total_timesteps
+        if self.use_cl:
+            if progress < 0.5:
+                w_keys = 0.0
+            elif progress < 0.75:
+                max_key_w = (progress - 0.5) / 0.25
+                w_keys = np.random.uniform(0.0, max_key_w)
+            else :
+                alpha_vec = np.array([self.alpha, self.alpha])  
+                w = np.random.dirichlet(alpha_vec)
+                w_keys = w[1]
+            if progress < 0.75:
+                w = np.array([1.0 - w_keys, w_keys], dtype=np.float32)
+        else:
+            alpha_vec = np.array([self.alpha, self.alpha])
+            w = np.random.dirichlet(alpha_vec).astype(np.float32)        
+        self.training_env.env_method("set_preference_vector", w)
+        self.eval_env.env_method("set_preference_vector", w)
+        if self.verbose > 0:
+            print(f"[PEARL] Sampled w: {w} (alpha={self.alpha})")
+
+    def _on_step(self) -> bool:
+        return True        
 
 def linear_schedule(start: float, end: float = 0.0):
     def sched(progress_remaining):
