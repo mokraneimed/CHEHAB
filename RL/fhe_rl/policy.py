@@ -6,7 +6,7 @@ import gymnasium as gym
 from typing import Any, Dict, Tuple, Union
 import numpy as np 
 class CustomFeaturesExtractor(nn.Module):
-    def __init__(self, observation_space, features_dim: int = 256):
+    def __init__(self, observation_space, features_dim: int = 258):
         super().__init__()
         self._embed_dim = observation_space["observation"].shape[0]
         self._features_dim = features_dim
@@ -30,7 +30,7 @@ class HierarchicalMaskablePolicy(nn.Module):
 
         self.rule_dim: int       = kwargs.pop("rule_dim", 5)
         self.max_positions: int  = kwargs.pop("max_positions", 32)
-        features_dim: int       = kwargs.pop("features_dim", 256)
+        features_dim: int       = kwargs.pop("features_dim", 258)
         lr: float               = kwargs.pop("lr", 3e-4)
         rule_hidden_dims        = kwargs.pop("rule_hidden_dims", [128, 128])
         pos_hidden_dims         = kwargs.pop("pos_hidden_dims", [128, 128])

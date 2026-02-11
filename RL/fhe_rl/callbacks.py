@@ -1,288 +1,152 @@
-from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
+from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.evaluation import evaluate_policy
 import numpy as np
 import torch
+import os
 
 class EntCoefScheduler(BaseCallback):
     def __init__(self, schedule, verbose: int = 0):
         super().__init__(verbose)
         self.schedule = schedule
+        self.rollout_count = 0
 
     def _on_training_start(self) -> None:
         p = self.model._current_progress_remaining
         self.model.ent_coef = float(self.schedule(p))
 
     def _on_rollout_end(self) -> None:
-        p = self.model._current_progress_remaining
-        self.model.ent_coef = float(self.schedule(p))
+        # p = self.model._current_progress_remaining
+        # self.model.ent_coef = float(self.schedule(p))
+        self.rollout_count += 1
+        
+        # --- CHANGE: Update entropy ONLY every 2nd rollout ---
+        if self.rollout_count % 2 == 0:
+            p = self.model._current_progress_remaining
+            self.model.ent_coef = float(self.schedule(p))
+            if self.verbose > 0:
+                print(f"[Entropy] Updated to {self.model.ent_coef:.4f} at rollout {self.rollout_count}")        
 
     def _on_step(self) -> bool:
         return True 
 
-class KeysWeightLogger(BaseCallback):
-    """Logs the current keys weight to tensorboard"""
-    def __init__(self, verbose=0):
+class ParetoEvalCallback(BaseCallback):
+    def __init__(self, eval_env, pref_list, 
+                 best_model_save_path=None, 
+                 log_path=None, 
+                 eval_freq=512, 
+                 n_eval_episodes=5, 
+                 deterministic=True, 
+                 verbose=1):
         super().__init__(verbose)
-        self.last_logged_weight = None
-    
-    def _on_rollout_end(self) -> bool:
-        # Get weight from first environment (they should all be in sync)
-        if hasattr(self.training_env, 'get_attr'):
-            weights = self.training_env.get_attr('current_keys_weight')
-            if weights:
-                current_weight = weights[0]
-                self.logger.record('train/keys_weight', current_weight)
-                self.last_logged_weight = current_weight
-        return True
-    def _on_step(self) -> bool:
-        return True
-     
-class TimestepUpdater(BaseCallback):
-    """
-    Callback that updates all environments with the current global timestep.
-    
-    This ensures all environments use the correct timestep for their
-    keys weight schedule, even when resuming from checkpoints.
-    """
-    
-    def __init__(self, total_timesteps, auto_transition = False, transition_point=0.75, update_buffer=False, verbose=0):
-        super().__init__(verbose)
-        self.last_logged_timestep = None
-        self.total_timesteps = total_timesteps
-        self.auto_transition = auto_transition
-        self.transition_point = transition_point
-        self.buffer_updated = False
-        self.update_buffer = update_buffer
+        self.eval_env = eval_env
+        self.pref_list = pref_list
+        self.eval_freq = eval_freq
+        self.n_eval_episodes = n_eval_episodes
+        self.deterministic = deterministic
+        self.best_model_save_path = best_model_save_path
+        self.log_path = log_path
+        
+        # Track best performance (Average across the Pareto Front)
+        self.best_mean_reward = -np.inf
 
-    def _on_training_start(self) -> None:
-        """
-        Called at the very beginning of training (or when resuming).
-        This is CRITICAL for checkpoint resuming to set the correct initial weight.
-        """
-        current_timestep = self.model.num_timesteps
-        
-        if self.verbose > 0:
-            print(f"[TimestepUpdater] Training start - setting all envs to timestep: {current_timestep}", flush=True)
-        
-        # Update all environments with the current timestep
-        try:
-            self.training_env.env_method('set_timestep', current_timestep)
-        except AttributeError:
-            print("[TimestepUpdater] Warning: training_env does not support env_method. Trying direct call.", flush=True)
-            if hasattr(self.training_env, 'set_timestep'):
-                self.training_env.set_timestep(current_timestep)
-        
-        # Also log the keys weight for verification
-        if self.verbose > 0:
-            try:
-                weights = self.training_env.get_attr('current_keys_weight')
-                if weights:
-                    print(f"[TimestepUpdater] Keys weights set to: {weights[0]:.4f}", flush=True)
-            except:
-                pass 
-    
-    def _on_rollout_end(self) -> None:
-        current_timestep = self.model.num_timesteps
-        if self.verbose > 0 and (self.last_logged_timestep is None or current_timestep - self.last_logged_timestep >= 10000):
-            print(f"[TimestepUpdater] Rollout ended - updating envs to timestep: {current_timestep}", flush=True)
-            self.last_logged_timestep = current_timestep
-        
-        try:
-            self.training_env.env_method('set_timestep', current_timestep)
-        except AttributeError:
-            print("[TimestepUpdater] Warning: training_env does not support env_method. Trying direct call.", flush=True)
-            if hasattr(self.training_env, 'set_timestep'):
-                self.training_env.set_timestep(current_timestep)
-
-        if self.update_buffer and not self.auto_transition and not self.buffer_updated:
-           if current_timestep >= self.total_timesteps * self.transition_point:
-               update_buffer(self.training_env, self.model)
-               self.buffer_updated = True
+        # Ensure directories exist
+        if self.best_model_save_path is not None:
+            os.makedirs(self.best_model_save_path, exist_ok=True)
 
     def _on_step(self) -> bool:
-        return True
-
-class DynamicEntCoefScheduler(BaseCallback):
-    """
-    Schedules entropy coefficient with a boost during objective transition.
-
-    Timeline:
-    - 0 → transition_point: decay from initial_ent → min_ent
-    - At transition_point: jump to boost_ent
-    - transition_point → end: decay from boost_ent → min_ent
-    """
-
-    def __init__(self, auto_transition=False, initial_ent=0.1, min_ent=0.0, boost_ent=0.07,
-                 transition_point=0.75, total_timesteps=1_000_000, verbose=1):
-        super().__init__(verbose)
-        self.initial_ent = initial_ent
-        self.min_ent = min_ent
-        self.boost_ent = boost_ent
-        self.transition_point = transition_point
-        self.total_timesteps = total_timesteps
-
-        self.keys_cost_triggered = False
-        self.trigger_timestep = None        
-
-        self.transition_timestep = int(self.total_timesteps * self.transition_point)
-
-        self.auto_transition = auto_transition
-
-    def _on_training_start(self) -> None:
-        # Set ent_coef at start
-        ent_coef = self.initial_ent
-        self.model.ent_coef = float(ent_coef)
-        if self.verbose > 0:
-            print(f"[DynamicEntCoefScheduler] Training start: ent_coef = {ent_coef}", flush=True)
-        self.logger.record("train/ent_coef", float(ent_coef))
-
-    def trigger_keys_cost(self):
-        """Called by CustomEvalCallback when keys cost objective is triggered."""
-        if not self.keys_cost_triggered:
-            self.keys_cost_triggered = True
-            self.trigger_timestep = self.model.num_timesteps
-            
-            if self.verbose > 0:
-                print(f"\n[DynamicEntCoefScheduler] Keys cost triggered at timestep {self.trigger_timestep}", flush=True)
-                print(f"[DynamicEntCoefScheduler] Boosting entropy to {self.boost_ent}, will decay to {self.min_ent} until end", flush=True)
-
-    def _on_rollout_end(self) -> bool:
-        current_t = self.model.num_timesteps
-        if current_t > self.total_timesteps:
-            current_t = self.total_timesteps
-
-        if not self.auto_transition:
-            if current_t < self.transition_timestep:
-                # Phase 1: decay from initial_ent to min_ent
-                frac = current_t / self.transition_timestep
-                ent_coef = self.initial_ent + frac * (self.min_ent - self.initial_ent)
-            elif current_t == self.transition_timestep:
-                # Exactly at transition point: jump to boost_ent
-                ent_coef = self.boost_ent
-            else:
-                # Phase 2: decay from boost_ent to min_ent until end
-                frac2 = (current_t - self.transition_timestep) / (self.total_timesteps - self.transition_timestep)
-                ent_coef = self.boost_ent + frac2 * (self.min_ent - self.boost_ent)
-        else:
-            if not self.keys_cost_triggered:
-                # Phase 1: Before trigger - decay from initial_ent to min_ent
-                frac = current_t / self.total_timesteps
-                ent_coef = self.initial_ent + frac * (self.min_ent - self.initial_ent)
-            
-            else:
-                # Phase 2: After trigger - decay from boost_ent to min_ent
-                remaining_total = self.total_timesteps - self.trigger_timestep
-                if remaining_total > 0:
-                    frac = (current_t - self.trigger_timestep) / remaining_total
-                    ent_coef = self.boost_ent + frac * (self.min_ent - self.boost_ent)
-                else:
-                    ent_coef = self.min_ent        
-
-        # Update the model’s entropy coefficient
-        self.model.ent_coef = float(ent_coef)
-        # Log for TensorBoard or logger
-        self.logger.record("train/ent_coef", float(ent_coef))
-
-    def _on_step(self) -> bool:
-        return True
-
-class CustomEvalCallback(EvalCallback):
-    def __init__(self, *args, auto_transition = False, ent_scheduler=None, update_buffer=False, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.save_file = 'mean_rewards.txt'
-        self.previous_mean_reward = None
-        self.counter = 0
-        self.improvement_threshold = 1  # Minimum improvement to reset counter
-        self.counter_threshold = 1  # Number of evaluations with no improvement before stopping
-        self.keys_cost_triggered = False
-        self.ent_scheduler = ent_scheduler
-        self.auto_transition = auto_transition
-        self.update_buffer = update_buffer
-
-
-
-    def _init_callback(self) -> None:
-        """Called when callback is initialized - find the entropy scheduler."""
-        super()._init_callback()
-        
-        # If using CallbackList, search for the entropy scheduler
-        if hasattr(self.parent, 'callbacks'):
-            for callback in self.parent.callbacks:
-                if isinstance(callback, DynamicEntCoefScheduler):
-                    self.ent_scheduler = callback
-                    if self.verbose > 0:
-                        print("[CustomEvalCallback] Found DynamicEntCoefScheduler", flush=True)
-                    break
-
-    def _on_step(self) -> bool:
-        # You can add custom logging or behavior here if needed
-        result = super()._on_step()
         if self.n_calls % self.eval_freq == 0:
-            # with open(self.save_file, 'a') as f:
-            #     f.write(f"{self.last_mean_reward}\n")
-            if self.auto_transition:
-                if not self.keys_cost_triggered:
-                    if self.previous_mean_reward is None or self.last_mean_reward >= self.previous_mean_reward + self.improvement_threshold:
-                        self.previous_mean_reward = self.last_mean_reward
-                        self.counter = 0
-                    else:
-                        self.counter += 1
-                        if self.counter >= self.counter_threshold:
-                            self.keys_cost_triggered = True
-                            if self.update_buffer:
-                                update_buffer(self.training_env, self.model)
-                            # self.in_warmup = True
-                            # self.training_env.env_method('set_warmup', True)
-                            print(f"No improvement in mean reward for {self.counter} evaluations. New objective triggered.")
-                            # self.model.stop_training = True
-                            try:
-                                self.training_env.env_method('trigger_keys_cost')
-                                print("[CustomEvalCallback] Training envs: keys cost triggered")
-                                
-                                # Trigger evaluation environment (IMPORTANT!)
-                                self.eval_env.env_method('trigger_keys_cost')
-                                print("[CustomEvalCallback] Eval env: keys cost triggered")
-                                
-                            except AttributeError:
-                                print("[TimestepUpdater] Warning: training_env does not support env_method. Trying direct call.", flush=True)
-                                if hasattr(self.training_env, 'set_timestep'):
-                                    self.training_env.trigger_keys_cost()
+            if self.verbose > 0:
+                print(f"\nStep {self.num_timesteps}: Starting Pareto Evaluation ({len(self.pref_list)} points)")
+            
+            all_means = []
+            all_lengths = []
+            
+            for w in self.pref_list:
+                # Force eval env to this specific goal
+                self.eval_env.env_method("set_preference_vector", w)
+                
+                # Run evaluation
+                episode_rewards, episode_lengths = evaluate_policy(
+                    self.model, 
+                    self.eval_env, 
+                    n_eval_episodes=self.n_eval_episodes, 
+                    deterministic=self.deterministic,
+                    return_episode_rewards=True 
+                )
+                
+                mean_r = np.mean(episode_rewards)
+                all_means.append(mean_r)
+                all_lengths.append(np.mean(episode_lengths))
 
-                                if hasattr(self.eval_env, 'trigger_keys_cost'):
-                                    self.eval_env.trigger_keys_cost()
-                                    print("[CustomEvalCallback] Eval env: keys cost triggered", flush=True)                                
+            # 1. Calculate the Global Score
+            current_mean_reward = np.mean(all_means)
+            current_mean_length = np.mean(all_lengths)
 
-                            if self.ent_scheduler is not None:
-                                self.ent_scheduler.trigger_keys_cost()
-                                if self.verbose > 0:
-                                    print("[CustomEvalCallback] Successfully triggered entropy boost!", flush=True)
-                            else:
-                                print("[CustomEvalCallback] Warning: DynamicEntCoefScheduler not found!", flush=True)                                                
-        return result    
-      
+            # 2. Log to Tensorboard/Logger (standard EvalCallback style)
+            self.logger.record("eval/pareto_avg_reward", current_mean_reward)
+            self.logger.record("eval/pareto_avg_ep_length", current_mean_length)
+            
+            # Optional: Log specific weight performance for deeper insight
+            for i, w in enumerate(self.pref_list):
+                self.logger.record(f"eval/reward_w_{w[1]}", all_means[i])
+            
+            self.eval_env.env_method("unlock_preferences")
+
+            if self.verbose > 0:
+                print(f"Eval num_timesteps={self.num_timesteps}, "
+                      f"episode_reward={current_mean_reward:.2f} +/- {np.std(all_means):.2f}")
+                print(f"Episode length: {current_mean_length:.2f} +/- {np.std(all_lengths):.2f}")
+
+            # 3. Check if this is the "Best" model found so far
+            if current_mean_reward > self.best_mean_reward:
+                if self.verbose > 0:
+                    print("New best mean reward!")
+                
+                if self.best_model_save_path is not None:
+                    self.model.save(os.path.join(self.best_model_save_path, "best_model"))
+                
+                self.best_mean_reward = current_mean_reward
+
+            # Trigger potential logging for SB3 monitoring
+            self.logger.dump(step=self.num_timesteps)
+
+        return True
 
 class PreferenceSamplerCallback(BaseCallback):
-    def __init__(self, use_cl=False, alpha=1.0, total_timesteps=1_000_000, verbose=0):
+    def __init__(self, eval_env, use_cl=False, alpha=1.0, total_timesteps=1_000_000, verbose=0):
         super().__init__(verbose)
         self.use_cl = use_cl
         self.alpha = alpha
         self.total_timesteps = total_timesteps
+        self.eval_env = eval_env
+        # --- MINIMAL CHANGE: Add a toggle flag ---
+        self.toggle_speed = True
     def _on_rollout_start(self) -> None:
-        progress = self.num_timesteps / self.total_timesteps
-        if self.use_cl:
-            if progress < 0.5:
-                w_keys = 0.0
-            elif progress < 0.75:
-                max_key_w = (progress - 0.5) / 0.25
-                w_keys = np.random.uniform(0.0, max_key_w)
-            else :
-                alpha_vec = np.array([self.alpha, self.alpha])  
-                w = np.random.dirichlet(alpha_vec)
-                w_keys = w[1]
-            if progress < 0.75:
-                w = np.array([1.0 - w_keys, w_keys], dtype=np.float32)
+        # progress = self.num_timesteps / self.total_timesteps
+        # if self.use_cl:
+        #     if progress < 0.5:
+        #         w_keys = 0.0
+        #     elif progress < 0.75:
+        #         max_key_w = (progress - 0.5) / 0.25
+        #         w_keys = np.random.uniform(0.0, max_key_w)
+        #     else :
+        #         alpha_vec = np.array([self.alpha, self.alpha])  
+        #         w = np.random.dirichlet(alpha_vec)
+        #         w_keys = w[1]
+        #     if progress < 0.75:
+        #         w = np.array([1.0 - w_keys, w_keys], dtype=np.float32)
+        # else:
+        #     alpha_vec = np.array([self.alpha, self.alpha])
+        #     w = np.random.dirichlet(alpha_vec).astype(np.float32)
+                # --- MINIMAL CHANGE: Logic to switch between [1,0] and [0,1] ---
+        if self.toggle_speed:
+            w = np.array([1.0, 0.0], dtype=np.float32) # Pure Speed
         else:
-            alpha_vec = np.array([self.alpha, self.alpha])
-            w = np.random.dirichlet(alpha_vec).astype(np.float32)        
+            w = np.array([0.0, 1.0], dtype=np.float32) # Pure Keys
+            
+        # Switch the flag for the NEXT rollout
+        self.toggle_speed = not self.toggle_speed
+                
         self.training_env.env_method("set_preference_vector", w)
         self.eval_env.env_method("set_preference_vector", w)
         if self.verbose > 0:

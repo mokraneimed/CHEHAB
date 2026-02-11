@@ -7,10 +7,11 @@ from stable_baselines3 import PPO
 from .utils  import load_expressions, create_rules, load_embeddings
 from .logger import log_training_details
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize,DummyVecEnv
-from .callbacks import linear_schedule, EntCoefScheduler, KeysWeightLogger, TimestepUpdater, DynamicEntCoefScheduler, CustomEvalCallback, PreferenceSamplerCallback
+from .callbacks import linear_schedule, EntCoefScheduler, PreferenceSamplerCallback, ParetoEvalCallback
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 
-from .schedules import step_schedule, linear_schedule as linear_schedule_keys, sigmoid_schedule, cosine_schedule
+
+from .pareto import generate_pref_list
 
 import random
 import numpy as np
@@ -30,6 +31,8 @@ def set_random_seed(seed: int = 42):
 def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 1_000_000, num_envs: int = 8, keys_schedule_type="step", transition_point=0.75, seed: int = 42, auto_transition: bool = False, max_keys_weight: int = 1.0, use_curriculum: bool = False, 
                     update_buffer: bool = False):
     set_random_seed(seed)
+    N=2
+    pref_list = generate_pref_list(N)
     benchmarks = load_expressions("./fhe_rl/datasets/benchmarks.txt") 
     expressions = load_expressions(expressions_file, benchmarks)
     max_positions = 16
@@ -42,16 +45,6 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
     checkpoint_dir = f"./checkpoints/{run_name}"
     os.makedirs(checkpoint_dir, exist_ok=True)
 
-    if keys_schedule_type == 'step':
-        keys_weight_schedule = step_schedule(total_timesteps, transition_point=transition_point, max_value=max_keys_weight)
-    elif keys_schedule_type == 'linear':
-        keys_weight_schedule = linear_schedule_keys(total_timesteps, start_point=transition_point, max_value=max_keys_weight)
-    elif keys_schedule_type == 'sigmoid':
-        keys_weight_schedule = sigmoid_schedule(total_timesteps, midpoint=transition_point, steepness=10, max_value=max_keys_weight)
-    elif keys_schedule_type == 'cosine':
-        keys_weight_schedule = cosine_schedule(total_timesteps, start_point=transition_point, max_value=max_keys_weight)
-    else:
-        raise ValueError(f"Unknown schedule type: {keys_schedule_type}")
 
     checkpoint_path = None
     steps_done = 0
@@ -65,20 +58,27 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
             print(f"Found checkpoint: {checkpoint_path}")
             print(f"Resuming from step {steps_done}")
 
-    def make_env(): return Monitor(fheEnv(rules_list, expressions, max_positions=max_positions, embeddings_model=embeddings_model, keys_weight_schedule = keys_weight_schedule, auto_transition=auto_transition, max_keys_weight=max_keys_weight, use_curriculum=use_curriculum))
-    env = SubprocVecEnv([make_env for _ in range(num_envs)], start_method='spawn')    
-    val_env = DummyVecEnv([
-    lambda: Monitor(fheEnv(rules_list, benchmarks, max_positions=max_positions,embeddings_model=embeddings_model, max_keys_weight=max_keys_weight, use_curriculum=use_curriculum))
-    ])
+    # def make_env(): return Monitor(fheEnv(rules_list, expressions, max_positions=max_positions, embeddings_model=embeddings_model, keys_weight_schedule = keys_weight_schedule, auto_transition=auto_transition, max_keys_weight=max_keys_weight, use_curriculum=use_curriculum))
+    # env = SubprocVecEnv([make_env for _ in range(num_envs)], start_method='spawn') 
+    def make_env(rank):
+        def _init():
+            # Pass pref_list and rank to each env
+            return Monitor(fheEnv(rules_list, expressions, max_positions=max_positions, embeddings_model=embeddings_model, 
+                                  pref_list=pref_list, env_idx=rank))
+        return _init  
+    env = SubprocVecEnv([make_env(i) for i in range(num_envs)])     
+    # val_env = DummyVecEnv([
+    # lambda: Monitor(fheEnv(rules_list, benchmarks, max_positions=max_positions,embeddings_model=embeddings_model, max_keys_weight=max_keys_weight, use_curriculum=use_curriculum))
+    # ])
+    val_env = DummyVecEnv([make_env(0)])
     ent_schedule = linear_schedule(0.1)
     ent_callback = EntCoefScheduler(ent_schedule, verbose=1)
     model_params = {
         "policy": HierarchicalMaskablePolicy,
         "env": env,
-        "learning_rate": 1e-4,
-        "features_dim": 258,
-        "n_steps": 64,
-        "batch_size": 8,
+        "learning_rate": 5e-4,
+        "n_steps": 512,
+        "batch_size": 16,
         "gamma": 0.99,
         "gae_lambda": 0.98,
         "n_epochs": 15,
@@ -90,11 +90,12 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
         "seed": seed,
         "policy_kwargs": {
             "ent_coef": 0.1,
+            "features_dim": 258,
             "rule_dim":      len(rules_list),
             "max_positions": max_positions,
-            "rule_hidden_dims":   [128, 64],
-            "pos_hidden_dims":    [64, 64],
-            "value_hidden_dims":    [256, 128, 64],
+            "rule_hidden_dims":   [64, 32],
+            "pos_hidden_dims":    [32, 32],
+            "value_hidden_dims":    [128, 64, 32],
             "seed": seed,
         }
     }
@@ -127,30 +128,26 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
         verbose=1
     )
 
-    # ent_scheduler = DynamicEntCoefScheduler(total_timesteps=total_timesteps, auto_transition=auto_transition, transition_point=transition_point, verbose=1)
+ 
 
-    # eval_callback = CustomEvalCallback(
-    #         val_env, 
-    #         best_model_save_path=f"./eval/best_model_{run_name}", 
-    #         log_path=tensorboard_log_dir, 
-    #         eval_freq=12000,
-    #         n_eval_episodes=num_benchmarks,
-    #         deterministic=True, 
-    #         render=False, 
-    #         verbose=1,
-    #         auto_transition=auto_transition,
-    #         ent_scheduler=ent_scheduler,
-    #         update_buffer=update_buffer
+    # eval_callback = EvalCallback(
+    #     val_env, 
+    #     best_model_save_path=f"./eval/best_model_{run_name}", 
+    #     log_path=tensorboard_log_dir, 
+    #     eval_freq=512,
+    #     n_eval_episodes=num_benchmarks,
+    #     deterministic=True, 
+    #     render=False, 
+    #     verbose=1
     # )
-
-    eval_callback = EvalCallback(
+    pareto_eval_cb = ParetoEvalCallback(
         val_env, 
+        pref_list=pref_list,
         best_model_save_path=f"./eval/best_model_{run_name}", 
         log_path=tensorboard_log_dir, 
-        eval_freq=64,
-        n_eval_episodes=num_benchmarks,
+        eval_freq=512, # Replicating your parameter
+        n_eval_episodes=num_benchmarks, # Replicating your parameter
         deterministic=True, 
-        render=False, 
         verbose=1
     )
 
@@ -162,21 +159,13 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
         print(f"Starting fresh training: {total_timesteps} total steps")
 
     
-    timestep_updater = TimestepUpdater(total_timesteps=total_timesteps, auto_transition=auto_transition, transition_point=transition_point, update_buffer=update_buffer, verbose=1)
-    keys_logger = KeysWeightLogger(verbose=1)
 
-    pref_callback = PreferenceSamplerCallback(
-        use_cl=False, 
-        alpha=1.0,  # Pass it here
-        total_timesteps=total_timesteps,
-        verbose=1
-    )
 
     model.learn(
         total_timesteps=remaining_steps, 
         log_interval=1, 
         progress_bar=True, 
-        callback=[pref_callback, ent_callback, eval_callback, checkpoint_callback],
+        callback=[ent_callback, pareto_eval_cb, checkpoint_callback],
         reset_num_timesteps = (checkpoint_path is None)
     )
     model.save(run_name)    
