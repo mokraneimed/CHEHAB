@@ -45,7 +45,10 @@ def parse_arguments(args=None):
     run_parser = subparsers.add_parser('run', help='Run the agent')
     run_parser.add_argument('input_expr_file', help='Input expression file')
     run_parser.add_argument('output_vector_file', help='Output vector file')
-    
+
+    run_parser.add_argument('--w_ops', type=float, default=0.5, help='Weight for operations')
+    run_parser.add_argument('--w_keys', type=float, default=0.5, help='Weight for keys')
+
     return parser.parse_args(args)
 
 
@@ -112,7 +115,7 @@ def main(args=None):
         input_file = parsed_args.input_expr_file
         output_file = parsed_args.output_vector_file
         embeddings, tokenizer = load_embeddings_from_config(parsed_args.tokenizer_type)
-        run_agent(input_file, embeddings, agent_zip, output_file)
+        run_agent(input_file, embeddings, agent_zip, output_file, w_ops=parsed_args.w_ops, w_keys=parsed_args.w_keys)
 
     else:
         print("Invalid command. Use 'train', 'test' or 'run'.")
