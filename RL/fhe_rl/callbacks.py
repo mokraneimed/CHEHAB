@@ -112,90 +112,10 @@ class ParetoEvalCallback(BaseCallback):
 
         return True
 
-class PreferenceSamplerCallback(BaseCallback):
-    def __init__(self, eval_env, use_cl=False, alpha=1.0, total_timesteps=1_000_000, verbose=0):
-        super().__init__(verbose)
-        self.use_cl = use_cl
-        self.alpha = alpha
-        self.total_timesteps = total_timesteps
-        self.eval_env = eval_env
-        # --- MINIMAL CHANGE: Add a toggle flag ---
-        self.toggle_speed = True
-    def _on_rollout_start(self) -> None:
-        # progress = self.num_timesteps / self.total_timesteps
-        # if self.use_cl:
-        #     if progress < 0.5:
-        #         w_keys = 0.0
-        #     elif progress < 0.75:
-        #         max_key_w = (progress - 0.5) / 0.25
-        #         w_keys = np.random.uniform(0.0, max_key_w)
-        #     else :
-        #         alpha_vec = np.array([self.alpha, self.alpha])  
-        #         w = np.random.dirichlet(alpha_vec)
-        #         w_keys = w[1]
-        #     if progress < 0.75:
-        #         w = np.array([1.0 - w_keys, w_keys], dtype=np.float32)
-        # else:
-        #     alpha_vec = np.array([self.alpha, self.alpha])
-        #     w = np.random.dirichlet(alpha_vec).astype(np.float32)
-                # --- MINIMAL CHANGE: Logic to switch between [1,0] and [0,1] ---
-        if self.toggle_speed:
-            w = np.array([1.0, 0.0], dtype=np.float32) # Pure Speed
-        else:
-            w = np.array([0.0, 1.0], dtype=np.float32) # Pure Keys
-            
-        # Switch the flag for the NEXT rollout
-        self.toggle_speed = not self.toggle_speed
-                
-        self.training_env.env_method("set_preference_vector", w)
-        self.eval_env.env_method("set_preference_vector", w)
-        if self.verbose > 0:
-            print(f"[PEARL] Sampled w: {w} (alpha={self.alpha})")
 
-    def _on_step(self) -> bool:
-        return True        
 
 def linear_schedule(start: float, end: float = 0.0):
     def sched(progress_remaining):
         return (start - end) * progress_remaining + end
     return sched
-
-def update_buffer(training_env, model):
-    try:
-        alt_rewards_per_env = training_env.env_method('get_and_clear_alternate_rewards')
-        buffer = model.rollout_buffer
-        total_steps = buffer.buffer_size * buffer.n_envs
-        all_alt_rewards = []
-        for env_rewards in alt_rewards_per_env:
-            all_alt_rewards.extend(env_rewards)
-        all_alt_rewards = np.array(all_alt_rewards, dtype=np.float32)
-        if len(all_alt_rewards) >= total_steps:
-            recent_rewards = all_alt_rewards[-total_steps:]
-            new_rewards = recent_rewards.reshape(buffer.buffer_size, buffer.n_envs)
-            old_reward_mean = buffer.rewards.mean()
-            buffer.rewards = new_rewards
-            with torch.no_grad():
-                last_obs = {
-                    k: torch.as_tensor(v[-1], device=model.device)
-                    for k, v in buffer.observations.items()
-                }
-                last_values = model.policy.predict_values(last_obs)
-            buffer.compute_returns_and_advantage(
-                last_values=last_values,
-                dones=buffer.episode_starts[-1]
-            )
-            new_reward_mean = buffer.rewards.mean()
-            print(f"[Phase Transition] Rewards updated in buffer:")
-            print(f"  Old mean reward: {old_reward_mean:.4f}")
-            print(f"  New mean reward: {new_reward_mean:.4f}")
-            print(f"  Buffer size: {buffer.buffer_size} steps × {buffer.n_envs} envs")
-            print(f"  Advantages recomputed ✓")
-            print(f"{'='*80}\n")            
-        else:
-            print(f"[Warning] Not enough alternate rewards collected:")
-            print(f"  Expected: {total_steps}, Got: {len(all_alt_rewards)}")
-            print(f"  Skipping reward replacement")
-    except:
-            print(f"[Error] Failed to replace rewards")
-            import traceback
-            traceback.print_exc()           
+     

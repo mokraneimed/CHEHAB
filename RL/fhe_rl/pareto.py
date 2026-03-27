@@ -1,3 +1,5 @@
+import numpy as np
+
 def generate_pref_list(n_points: int):
     """
     Generates a list of preference vectors.
@@ -13,5 +15,4 @@ def generate_pref_list(n_points: int):
         w_keys = round(i / (n_points - 1), 1)
         w_ops = round(1.0 - w_keys, 1)
         prefs.append([w_ops, w_keys])
-    return prefs
-  
+    return prefs[:-1]

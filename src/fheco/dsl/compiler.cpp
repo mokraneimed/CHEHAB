@@ -1734,7 +1734,7 @@ void Compiler::format_vectorized_code(const std::shared_ptr<ir::Func> &func, boo
   }
   std::cout<<"==> stop_reached : "<<final_expression_reached<<" \n";
   // we need to run the greedy trs at this stage 
-  if(!final_expression_reached){
+  if(!final_expression_reached){ // we can activate it to test the effect of greedy trs on the final expression
     auto ruleset = Compiler::Ruleset::depth;
     auto rewrite_heuristic = trs::RewriteHeuristic::bottom_up;
     compile(func, ruleset, rewrite_heuristic);

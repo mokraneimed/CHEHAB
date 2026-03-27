@@ -28,10 +28,9 @@ def set_random_seed(seed: int = 42):
     torch.backends.cudnn.benchmark = False
     os.environ['PYTHONHASHSEED'] = str(seed)
 
-def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 1_000_000, num_envs: int = 8, keys_schedule_type="step", transition_point=0.75, seed: int = 42, auto_transition: bool = False, max_keys_weight: int = 1.0, use_curriculum: bool = False, 
-                    update_buffer: bool = False):
+def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 1_000_000, num_envs: int = 8 , seed: int = 42):
     set_random_seed(seed)
-    N=2
+    N=11
     pref_list = generate_pref_list(N)
     benchmarks = load_expressions("./fhe_rl/datasets/benchmarks.txt") 
     expressions = load_expressions(expressions_file, benchmarks)
@@ -58,27 +57,24 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
             print(f"Found checkpoint: {checkpoint_path}")
             print(f"Resuming from step {steps_done}")
 
-    # def make_env(): return Monitor(fheEnv(rules_list, expressions, max_positions=max_positions, embeddings_model=embeddings_model, keys_weight_schedule = keys_weight_schedule, auto_transition=auto_transition, max_keys_weight=max_keys_weight, use_curriculum=use_curriculum))
-    # env = SubprocVecEnv([make_env for _ in range(num_envs)], start_method='spawn') 
-    def make_env(rank):
+    lambda_env = 0.0
+    def make_env(rank, expressions):
         def _init():
             # Pass pref_list and rank to each env
             return Monitor(fheEnv(rules_list, expressions, max_positions=max_positions, embeddings_model=embeddings_model, 
-                                  pref_list=pref_list, env_idx=rank))
+                                  pref_list=pref_list, lambda_env=lambda_env, env_idx=rank))
         return _init  
-    env = SubprocVecEnv([make_env(i) for i in range(num_envs)])     
-    # val_env = DummyVecEnv([
-    # lambda: Monitor(fheEnv(rules_list, benchmarks, max_positions=max_positions,embeddings_model=embeddings_model, max_keys_weight=max_keys_weight, use_curriculum=use_curriculum))
-    # ])
-    val_env = DummyVecEnv([make_env(0)])
+    env = SubprocVecEnv([make_env(i, expressions) for i in range(num_envs)])
+    env.seed(seed)     
+    val_env = DummyVecEnv([make_env(0, benchmarks)])
     ent_schedule = linear_schedule(0.1)
     ent_callback = EntCoefScheduler(ent_schedule, verbose=1)
     model_params = {
         "policy": HierarchicalMaskablePolicy,
         "env": env,
-        "learning_rate": 5e-4,
-        "n_steps": 512,
-        "batch_size": 16,
+        "learning_rate": 1e-4,
+        "n_steps": 2048,
+        "batch_size": 256,
         "gamma": 0.99,
         "gae_lambda": 0.98,
         "n_epochs": 15,
@@ -99,9 +95,7 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
             "seed": seed,
         }
     }
-    ## model = PPO(**model_params)
 
-    # Load model from checkpoint or create new
     if checkpoint_path:
         print(f"Loading model from checkpoint: {checkpoint_path}")
         model = PPO.load(checkpoint_path, env=env, tensorboard_log=tensorboard_log_dir)
@@ -120,7 +114,7 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
     num_benchmarks = len(benchmarks)
 
     checkpoint_callback = CheckpointCallback(
-        save_freq=8000,
+        save_freq=10000,
         save_path=checkpoint_dir,
         name_prefix="rl_model",
         save_replay_buffer=False,
@@ -130,22 +124,12 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
 
  
 
-    # eval_callback = EvalCallback(
-    #     val_env, 
-    #     best_model_save_path=f"./eval/best_model_{run_name}", 
-    #     log_path=tensorboard_log_dir, 
-    #     eval_freq=512,
-    #     n_eval_episodes=num_benchmarks,
-    #     deterministic=True, 
-    #     render=False, 
-    #     verbose=1
-    # )
     pareto_eval_cb = ParetoEvalCallback(
         val_env, 
         pref_list=pref_list,
         best_model_save_path=f"./eval/best_model_{run_name}", 
         log_path=tensorboard_log_dir, 
-        eval_freq=512, # Replicating your parameter
+        eval_freq=10000, # Replicating your parameter
         n_eval_episodes=num_benchmarks, # Replicating your parameter
         deterministic=True, 
         verbose=1

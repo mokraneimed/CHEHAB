@@ -30,7 +30,7 @@ CYAN    = "\033[36m"
 
 class fheEnv(gym.Env):
 
-    def __init__(self, rules_list, expressions, max_positions=2,embeddings_model=None, pref_list=[[1.0, 0.0], [0.0, 1.0]], env_idx=0):
+    def __init__(self, rules_list, expressions, max_positions=2,embeddings_model=None, pref_list=[[1.0, 0.0], [0.0, 1.0]], lambda_env=0.1, env_idx=0):
         
         super().__init__()
         self.rules = rules_list
@@ -50,8 +50,13 @@ class fheEnv(gym.Env):
         self.pref_list = [np.array(p, dtype=np.float32) for p in pref_list]
         self.current_pref_idx = env_idx % len(self.pref_list)
         self.current_w = self.pref_list[self.current_pref_idx]
-        self.lambda_kl = 0.1
+
+        self.lambda_kl = 0.0
+        self.lambda_env = lambda_env
+
         self.pref_locked = False
+        self.embeded_expression = None
+        self.random_pref = True
 
         self.action_space = spaces.Discrete(len(self.rules.keys()) * self.max_positions)
         self.observation_space = spaces.Dict({
@@ -97,19 +102,32 @@ class fheEnv(gym.Env):
         self.curr_ops, self.curr_keys = self.get_split_costs(self.expression)
 
         if not self.pref_locked:
-            self.current_pref_idx = (self.current_pref_idx + 1) % len(self.pref_list)
+            if self.random_pref:
+                random_idx = self.np_random.integers(0, len(self.pref_list))
+                self.current_pref_idx = random_idx
+                mode_name = "RANDOM SEARCH"
+            else:
+                self.current_pref_idx = 0
+                mode_name = "FIXED SPEED FOCUS"
+            
             self.current_w = self.pref_list[self.current_pref_idx]
-    
+            self.random_pref = not self.random_pref           
+        else:
+            mode_name = "LOCKED (EVALUATION)"
 
+        print(f"\n{BLUE}{'='*40} EPISODE START {'='*40}{RESET}")
+        print(f"{BOLD}{MAGENTA}Optimization Mode{RESET}  : {CYAN}{mode_name}{RESET}") 
+                   
+        self.embeded_expression = self._embed_expression(self.expression)
         return self._get_obs(), {}
-        # return {
-        #     "observation": self._embed_expression(self.expression),
-        #     "action_mask": self.get_action_mask()
-        # }, {}
 
     def _get_obs(self):
-        emb = self._embed_expression(self.expression)
-        obs = np.concatenate([emb, self.current_w]).astype(np.float32)
+        if self.embeded_expression is None:
+            emb = np.zeros(self.embedding_dim, dtype=np.float32)
+        else:
+            emb = self.embeded_expression    
+        w = np.atleast_1d(self.current_w).astype(np.float32)
+        obs = np.concatenate([emb, w]).astype(np.float32)
         return {
             "observation": obs,
             "action_mask": self.get_action_mask()
@@ -125,7 +143,8 @@ class fheEnv(gym.Env):
         reward = 0
         print(f"\n{CYAN}{'-'*100}{RESET}")
         print(f"{BOLD}{MAGENTA}Old expression{RESET}: {YELLOW}{self.expression}{RESET}")
-        print(f"{BOLD}{MAGENTA}Old cost      {RESET}: {RED}{self.current_cost}{RESET}")
+        print(f"{BOLD}{MAGENTA}Old ops cost      {RESET}: {RED}{self.curr_ops}{RESET}")
+        print(f"{BOLD}{MAGENTA}Old keys cost      {RESET}: {RED}{self.curr_keys}{RESET}")
 
         if rule_name == "END":
             terminated = True
@@ -141,7 +160,6 @@ class fheEnv(gym.Env):
             self.expression = temp
             new_cost = self.get_cost(self.expression)
  
-            # reward = self.calculate_intermediate_reward(new_cost)
 
             new_ops, new_keys = self.get_split_costs(self.expression)
             reward = self.calculate_intermediate_reward(new_ops, new_keys)
@@ -156,13 +174,14 @@ class fheEnv(gym.Env):
         info = {"expression": self.expression}
         reward_color = GREEN if reward >= 0 else RED
         print(f"{BOLD}{MAGENTA}New expression{RESET}: {YELLOW}{self.expression}{RESET}")
-        print(f"{BOLD}{MAGENTA}New cost      {RESET}: {RED}{self.current_cost}{RESET}")
+        print(f"{BOLD}{MAGENTA}New ops cost      {RESET}: {RED}{self.curr_ops}{RESET}")
+        print(f"{BOLD}{MAGENTA}New keys cost      {RESET}: {RED}{self.curr_keys}{RESET}")
         print(f"{BOLD}{MAGENTA}Reward        {RESET}: {reward_color}{reward}{RESET}")
         print(f"{BOLD}{MAGENTA}Rule name     {RESET}: {CYAN}{rule_name}{RESET}")
         print(f"{BOLD}{MAGENTA}At position   {RESET}: {BLUE}{pos_idx}{RESET}")
         print(f"{CYAN}{'-'*100}{RESET}")
-        embedding = self._embed_expression(self.expression)
-        if embedding is None:
+        self.embeded_expression = self._embed_expression(self.expression)
+        if self.embeded_expression is None:
             terminated = True
             truncated = True
             reward = self.calculate_final_reward()
@@ -204,9 +223,6 @@ class fheEnv(gym.Env):
                 break
         return isValid
     def calculate_final_reward(self) -> float:
-        # if self.initial_cost == 0:
-        #     return 0.0
-        # return (self.initial_cost - self.current_cost) / self.initial_cost * 100
 
         if self.initial_ops == 0:
             r_ops = 0.0
@@ -215,11 +231,8 @@ class fheEnv(gym.Env):
         r_keys = (self.initial_keys - self.curr_keys) / 5
         r_vec = np.array([r_ops, r_keys])
         reward_linear = np.dot(self.current_w, r_vec)
-        r_pos = np.maximum(0, r_vec) + 1e-6
-        weighted_r = self.current_w * r_pos
-        r_tilde = weighted_r / (np.sum(weighted_r))
-        kl_bonus = np.sum(r_tilde * np.log((r_tilde + 1e-6) / 0.5))
-        total_reward = reward_linear + self.lambda_kl * kl_bonus
+        reward_env = max([np.dot(pref, r_vec) for pref in self.pref_list])
+        total_reward = reward_linear + self.lambda_env * reward_env
         return total_reward * 100
         
         
@@ -232,11 +245,8 @@ class fheEnv(gym.Env):
         r_keys = (self.curr_keys - new_keys) / 5
         r_vec = np.array([r_ops, r_keys])
         reward_linear = np.dot(self.current_w, r_vec)
-        r_pos = np.maximum(0, r_vec) + 1e-6
-        weighted_r = self.current_w * r_pos
-        r_tilde = weighted_r / (np.sum(weighted_r))
-        kl_bonus = np.sum(r_tilde * np.log((r_tilde + 1e-6) / 0.5))
-        total_reward = reward_linear + self.lambda_kl * kl_bonus
+        reward_env = max([np.dot(pref, r_vec) for pref in self.pref_list])
+        total_reward = reward_linear + self.lambda_env * reward_env
         return total_reward
 
     
