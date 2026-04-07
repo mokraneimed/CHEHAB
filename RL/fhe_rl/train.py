@@ -7,7 +7,7 @@ from stable_baselines3 import PPO
 from .utils  import load_expressions, create_rules, load_embeddings
 from .logger import log_training_details
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize,DummyVecEnv
-from .callbacks import linear_schedule, EntCoefScheduler, PreferenceSamplerCallback, ParetoEvalCallback
+from .callbacks import linear_schedule, EntCoefScheduler, ParetoEvalCallback
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 
 

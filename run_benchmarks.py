@@ -420,7 +420,7 @@ for subfolder_name in polynomial_folders:
                         if not benchmark_compilation_timed_out : 
                             for key, values in operation_stats.items():
                                 if values == []:
-                                    print(f"Warning: No values found for {key} in {subfolder_name} with slot_count {slot_count}.")
+                                    print(f"Warning: No values found for {key} in {benchmark_name}.")
                                     result = "N/A"
                                 else : 
                                     result = statistics.median(values) 
