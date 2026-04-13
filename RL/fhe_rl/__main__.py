@@ -2,55 +2,12 @@
 import sys
 import os
 import argparse
-from .run import run_agent
-from .train import train_agent
-from .test import test_agent
-from .utils import load_embeddings
-from .TRAE_bpe import BPETokenizer  # Import for pickle compatibility
-from .config import (
-    get_model_path, get_tokenizer_type, 
-    print_config
-)
 
+from .experiments.run_ops_exp import run_ops_experiment
+from .agents.sequential.agent2_key.train import train_agent
 
-def parse_arguments(args=None):
-    """Parse command line arguments"""
-    parser = argparse.ArgumentParser(description="FHE RL Agent")
-    
-    # Add tokenizer type argument
-    parser.add_argument(
-        '--tokenizer_type', 
-        choices=['dynamic', 'bpe'], 
-        default=get_tokenizer_type(),
-        help='Tokenizer type to use (default: from config)'
-    )
-    
-    # Add config flag
-    parser.add_argument(
-        '--show_config', 
-        action='store_true',
-        help='Show current configuration and exit'
-    )
-    
-    # Subcommands
-    subparsers = parser.add_subparsers(dest='mode', help='Available commands')
-    
-    # Train command
-    train_parser = subparsers.add_parser('train', help='Train the agent')
-    
-    # Test command
-    test_parser = subparsers.add_parser('test', help='Test the agent')
-    
-    # Run command
-    run_parser = subparsers.add_parser('run', help='Run the agent')
-    run_parser.add_argument('input_expr_file', help='Input expression file')
-    run_parser.add_argument('output_vector_file', help='Output vector file')
-
-    run_parser.add_argument('--w_ops', type=float, default=0.5, help='Weight for operations')
-    run_parser.add_argument('--w_keys', type=float, default=0.5, help='Weight for keys')
-
-    return parser.parse_args(args)
-
+from .shared.config import get_model_path, get_tokenizer_type
+from .shared.utils import load_embeddings
 
 def usage() -> None:
     print(
@@ -86,42 +43,14 @@ def load_embeddings_from_config(tokenizer_type=None):
 
 
 def main(args=None):
-    """Main function with configuration support"""
-    parsed_args = parse_arguments(args)
-    
-    # Show configuration if requested
-    if parsed_args.show_config:
-        print_config()
-        return
-    
-    mode = parsed_args.mode
-    if not mode:
-        usage()
-
-    # ────────────────────────────── TRAIN ─────────────────────────────
-    if mode == "train":
-        embeddings, tokenizer = load_embeddings_from_config(parsed_args.tokenizer_type)
-        train_agent("./fhe_rl/datasets/final_llm_dataset.txt", embeddings, total_timesteps=2_000_000, num_envs=8)
-
-    # ─────────────────────────────── TEST ─────────────────────────────
-    elif mode == "test":
-        agent_zip = get_model_path("agent_model")
-        embeddings, tokenizer = load_embeddings_from_config(parsed_args.tokenizer_type)
-        test_agent("./fhe_rl/datasets/benchmarks.txt", embeddings, agent_zip)
-
-    # ─────────────────────────────── RUN ──────────────────────────────
-    elif mode == "run":
-        agent_zip = get_model_path("agent_model")
-        input_file = parsed_args.input_expr_file
-        output_file = parsed_args.output_vector_file
-        embeddings, tokenizer = load_embeddings_from_config(parsed_args.tokenizer_type)
-        run_agent(input_file, embeddings, agent_zip, output_file, w_ops=parsed_args.w_ops, w_keys=parsed_args.w_keys)
-
-    else:
-        print("Invalid command. Use 'train', 'test' or 'run'.")
-        usage()
-
-
+    embeddings, tokenizer = load_embeddings_from_config("dynamic")
+    train_agent(
+        expressions_file="./fhe_rl/shared/datasets/benchmarks.txt",
+        embeddings_model=embeddings,
+        total_timesteps=10_000,
+        num_envs=1,
+        seed=42
+    )
 
 
 if __name__ == "__main__":

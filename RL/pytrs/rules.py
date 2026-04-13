@@ -13,13 +13,18 @@ import subprocess
 
 
 
-def create_rules(rules_path: str, rotations_rules_path: str) -> dict:
+def create_rules(ops_rules_path: str = None, rotations_rules_path: str = None) -> dict:
     
-    rules_text = open(rules_path,'r').read().replace("?","")
-    rotations_rules_text = open(rotations_rules_path,'r').read().replace("?","")
-    rules = parse_rules_from_text(rules_text)
-    rotations_rules = parse_rules_from_text(rotations_rules_text)
-    rules.extend(rotations_rules)
+    rules = []
+    if ops_rules_path is not None:
+        rules_text = open(ops_rules_path,'r').read().replace("?","")
+        ops_rules = parse_rules_from_text(rules_text)
+        rules.extend(ops_rules)
+
+    if rotations_rules_path is not None:    
+        rotations_rules_text = open(rotations_rules_path,'r').read().replace("?","")
+        rotations_rules = parse_rules_from_text(rotations_rules_text)
+        rules.extend(rotations_rules)
 
     rules_dict = {rule.name: rule for rule in rules}
     return rules_dict 
