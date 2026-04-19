@@ -12,12 +12,12 @@ from cost import calculate_cost
 
 def example_usage():
     
-    rules = create_rules('../rules.txt', '../rotations_rules.txt') # returns a dict of rules {rulename:rule}
+    rules = create_rules(rotations_rules_path='../rotations_rules.txt') # returns a dict of rules {rulename:rule}
     print(rules)
     rule = rules["rotate_4"]
 
     # Example expression: ( << (Vec a b c d e f g h i ) 1 )
-    expr_str = "(<< (Vec a b c d e f g h i) 4)"
+    expr_str = "(VecAdd (VecAdd (VecMul (Vec v1_0 v1_2 v1_1 v1_3 v2_0 v2_2 v2_1 v2_3) (<< (Vec v1_0 v1_2 v1_1 v1_3 v2_0 v2_2 v2_1 v2_3) 4)) (<< (VecMul (Vec v1_0 v1_2 v1_1 v1_3 v2_0 v2_2 v2_1 v2_3) (<< (Vec v1_0 v1_2 v1_1 v1_3 v2_0 v2_2 v2_1 v2_3) 4)) 2)) (<< (VecAdd (VecMul (Vec v1_0 v1_2 v1_1 v1_3 v2_0 v2_2 v2_1 v2_3) (<< (Vec v1_0 v1_2 v1_1 v1_3 v2_0 v2_2 v2_1 v2_3) 4)) (<< (VecMul (Vec v1_0 v1_2 v1_1 v1_3 v2_0 v2_2 v2_1 v2_3) (<< (Vec v1_0 v1_2 v1_1 v1_3 v2_0 v2_2 v2_1 v2_3) 4)) 2)) 1))"
     
     
     

@@ -446,6 +446,12 @@ class RewriteRule:
     ) -> List[Tuple[List[int], Expr]]:
         if self.rule_type in ["vectorize", "vectorize-flexible", "vectorize-rotation", "vectorize-rotation-flexible"]:
             return self._find_vectorize_matches(expr)
+        elif self.rule_type == "de-rotate":
+            matches = []
+            self._find_matches_recursive(expr, [], matches)
+            valid = [(p, m) for p, m in matches
+                    if self._apply_via_path(expr, p) is not None]
+            return [([], expr)] if valid else []            
         else:
             # Regular rules
             matches: List[Tuple[List[int], Expr]] = []
@@ -503,16 +509,21 @@ class RewriteRule:
 
             # enqueue children one level deeper
             if isinstance(node, Op):
-                rotation = False
-                
-                for rule in self.rotation_rules:
-                    if rule.lhs.match(node) is not None:
-                        rotation = True
-                if not rotation:
+                if self.rule_type == "de-rotate":
+                    # no guard — traverse all children
                     for i, child in enumerate(node.args):
                         queue.append((cur_path + [i], child))
-                else:
-                    queue.append((cur_path + [0], node.args[0]))
+                else:        
+                    rotation = False
+                    
+                    for rule in self.rotation_rules:
+                        if rule.lhs.match(node) is not None:
+                            rotation = True
+                    if not rotation:
+                        for i, child in enumerate(node.args):
+                            queue.append((cur_path + [i], child))
+                    else:
+                        queue.append((cur_path + [0], node.args[0]))
 
     def _apply_via_path(self, expr: Expr, path: List[int]) -> Optional[Expr]:
         WRAPPER_OPS = {"VecMul", "VecAdd", "VecMinus"}
@@ -574,11 +585,24 @@ class RewriteRule:
         match: Optional[Expr] = None,
         path:  Optional[List[int]] = None
     ) -> Expr:
+        if self.rule_type == "de-rotate":
+            return self._apply_rule_everywhere(expr)
         if path is not None:
             return self._apply_via_path(expr, path)
         if match is not None:
             return self._apply_rule_match(expr, match)
         return self.apply(expr) or expr
+
+    def _apply_rule_everywhere(self, expr: Expr) -> Expr:
+        while True:
+            matches = []
+            self._find_matches_recursive(expr, [], matches)
+            valid = [(p, m) for p, m in matches
+                    if self._apply_via_path(expr, p) is not None]
+            if not valid:
+                break
+            expr = self._apply_via_path(expr, valid[0][0])
+        return expr        
 
     def _apply_rule_match(self, expr: Expr, match: Expr) -> Expr:
         if expr is match:

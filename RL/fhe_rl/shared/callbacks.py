@@ -90,6 +90,9 @@ class ParetoEvalCallback(BaseCallback):
             for i, w in enumerate(self.pref_list):
                 self.logger.record(f"eval/reward_w_{w[1]}", all_means[i])
             
+            for i, w in enumerate(self.pref_list):
+                self.logger.record(f"eval/length_w_{w[1]}", all_lengths[i])
+
             self.eval_env.env_method("unlock_preferences")
 
             if self.verbose > 0:

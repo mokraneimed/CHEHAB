@@ -43,8 +43,8 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
     expressions = load_expressions(expressions_file, benchmarks)
     max_positions = 16
     # rules_list  = create_rules("rules.txt", "rotations_rules.txt")
-    ops_rules_list  = create_rules("rules.txt")
-    keys_rules_list = create_rules("rotations_rules.txt")
+    ops_rules_list  = create_rules(ops_rules_path="rules.txt")
+    keys_rules_list = create_rules(rotations_rules_path="rotations_rules.txt")
     ops_rules_list["END"] = None
     keys_rules_list["END"] = None
     job_id = os.environ.get("SLURM_JOB_ID", "jobid")
