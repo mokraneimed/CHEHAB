@@ -4,7 +4,7 @@ import subprocess
 import csv 
 import re
 import statistics
-from RL.fhe_rl.pareto import generate_pref_list
+from RL.fhe_rl.shared.pareto import generate_pref_list
 # Specify the parent folder containing the benchmarks and build subfolders
 benchmarks_folder = "benchmarks"  
 ################################
