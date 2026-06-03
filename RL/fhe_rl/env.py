@@ -101,6 +101,8 @@ class fheEnv(gym.Env):
         self.initial_ops, self.initial_keys = self.get_split_costs(self.expression)
         self.curr_ops, self.curr_keys = self.get_split_costs(self.expression)
 
+        
+
         if not self.pref_locked:
             if self.random_pref:
                 random_idx = self.np_random.integers(0, len(self.pref_list))
@@ -134,6 +136,8 @@ class fheEnv(gym.Env):
         }
 
     def step(self, action: int):
+        if self.current_w[0] == 0.0 and self.current_w[1] == 1.0:
+            action = list(self.rules.keys()).index("END") * self.max_positions
         self.steps += 1
         rule_idx = action // self.max_positions
         pos_idx = action % self.max_positions
@@ -193,6 +197,10 @@ class fheEnv(gym.Env):
                 "l": self.steps,
                 "t": None
             }
+            print(f"\n initial ops cost: {self.initial_ops}")
+            print(f"\n initial keys cost: {self.initial_keys}")
+            print(f"\n final ops cost: {self.curr_ops}")
+            print(f"\n final keys cost: {self.curr_keys}")
         obs = self._get_obs()    
         return obs, reward, terminated, truncated, {"expression": self.expression}
     

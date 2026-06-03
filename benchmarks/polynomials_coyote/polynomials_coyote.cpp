@@ -205,8 +205,8 @@ int main(int argc, char **argv) {
     float w_ops = 1.0;
     float w_keys = 0.0;
     
-    if (argc > 6) w_ops = std::stof(argv[6]);
-    if (argc > 7) w_keys = std::stof(argv[7]);    
+    if (argc > 10) w_ops = std::stof(argv[10]);
+    if (argc > 11) w_keys = std::stof(argv[11]);    
     
     if (cse) {
         Compiler::enable_cse();

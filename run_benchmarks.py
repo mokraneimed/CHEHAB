@@ -11,32 +11,32 @@ benchmarks_folder = "benchmarks"
 build_folder = os.path.join("build", "benchmarks")
 operations = ["add", "sub", "multiply_plain", "rotate_rows", "negate", "multiply"]
 infos = ["benchmark", "w_ops", "w_keys"]
-additional_infos =[ "Depth", "Multiplicative Depth","compile_time (s)", "circuit_execution_time (s)",'galois_keys_generation_time (s)','total_execution_time (s)',"Remaining_noise_budget", 'rotation_keys_size (MB)', 'Final_Cost']
+additional_infos =[ "Depth", "Multiplicative Depth","compile_time (s)", "circuit_execution_time (s)",'galois_keys_generation_time (s)','total_execution_time (s)',"Remaining_noise_budget", 'rotation_keys_size (MB)', 'final_ops_cost', 'final_keys_cost']
 infos.extend(operations) 
 infos.extend(additional_infos) 
 
 #############################################
-try:
-    print("run=> cmake', '-S', '.', '-B', 'build' ")
-    result = subprocess.run(
-        ['cmake', '-S', '.', '-B', 'build'], 
-        check=True, 
-        stdout=subprocess.PIPE, 
-        stderr=subprocess.PIPE, 
-        universal_newlines=True
-    )
-    print("run=> 'cmake', '--build', 'build'")
-    result = subprocess.run(
-        ['cmake', '--build', 'build'], 
-        check=True, 
-        stdout=subprocess.PIPE, 
-        stderr=subprocess.PIPE, 
-        universal_newlines=True
-    )  
-except subprocess.CalledProcessError as e:
-    print(f"Command failed with error:\n{e.stderr}")    
+# try:
+#     print("run=> cmake', '-S', '.', '-B', 'build' ")
+#     result = subprocess.run(
+#         ['cmake', '-S', '.', '-B', 'build'], 
+#         check=True, 
+#         stdout=subprocess.PIPE, 
+#         stderr=subprocess.PIPE, 
+#         universal_newlines=True
+#     )
+#     print("run=> 'cmake', '--build', 'build'")
+#     result = subprocess.run(
+#         ['cmake', '--build', 'build'], 
+#         check=True, 
+#         stdout=subprocess.PIPE, 
+#         stderr=subprocess.PIPE, 
+#         universal_newlines=True
+#     )  
+# except subprocess.CalledProcessError as e:
+#     print(f"Command failed with error:\n{e.stderr}")    
 
-benchmark_folders = ["max","sort","box_blur"]
+benchmark_folders = ["dot_product"]
 
 #benchmark_folders = ["lin_reg","hamming_dist","poly_reg","l2_distance","dot_product","gx_kernel","gy_kernel","roberts_cross","matrix_mul","max","sort"] 
 exceptions = ["max","sort","discrete_cosin_transform","poly_derivative"]
@@ -52,9 +52,9 @@ benchmarks_slot_counts  = {
 optimization_method = 1 # 0 = egraph (default), 1 = RL
 cse_enabled = 1
 vectorize_code = 1 
-slot_counts= [3,4,5,8,16,32]
+slot_counts= [4,8,16,32]
 pref_list = generate_pref_list(11)
-iterations = 3 #minimum 2
+iterations = 2 #minimum 2
 window_size = 0    
 depths = [5,10] 
 regimes = ["50-50","100-50"]
@@ -92,7 +92,7 @@ for subfolder_name in benchmark_folders:
                     "add": [], "sub": [], "multiply_plain": [], "rotate_rows": [],
                     "negate": [], "multiply": [], "Depth": [], "Multiplicative Depth": [],
                     "compile_time (s)": [], "circuit_execution_time (s)": [], "galois_keys_generation_time (s)": [], 
-                    "total_execution_time (s)": [], "Remaining_noise_budget": [], "rotation_keys_size (MB)": [], "Final_Cost": []
+                    "total_execution_time (s)": [], "Remaining_noise_budget": [], "rotation_keys_size (MB)": [], "final_ops_cost": [], "final_keys_cost": []
                     }
                     ###generate io_file for benchmark with slot_count 
                     if not subfolder_name in exceptions :
@@ -121,13 +121,16 @@ for subfolder_name in benchmark_folders:
                             for line in lines:
                                 clean_line = re.sub(r'\x1b\[[0-9;]*m', '', line)
                                 #print(line)
-                                if 'New cost' in clean_line:
+                                if 'final ops cost:' in clean_line:
                                     try:
-                                        temp_cost = float(clean_line.split(':')[1].strip())
+                                        operation_stats["final_ops_cost"].append(float(clean_line.split(':')[1].strip()))
                                     except (IndexError, ValueError):
                                         pass
-                                if 'Rule name' in clean_line and 'END' in clean_line:
-                                    operation_stats["Final_Cost"].append(temp_cost)     
+                                if 'final keys cost:' in clean_line:
+                                    try:
+                                        operation_stats["final_keys_cost"].append(float(clean_line.split(':')[1].strip()))
+                                    except (IndexError, ValueError):
+                                        pass     
                                 if ' ms' in line:
                                     #print(f"=======> compile_time line : {line}")
                                     optimization_time = float(line.split()[0])
@@ -280,7 +283,7 @@ for subfolder_name in polynomial_folders:
                         "add": [], "sub": [], "multiply_plain": [], "rotate_rows": [],
                         "negate": [], "multiply": [], "Depth": [], "Multiplicative Depth": [],
                         "compile_time (s)": [], "circuit_execution_time (s)": [], "galois_keys_generation_time (s)": [], 
-                        "total_execution_time (s)": [], "Remaining_noise_budget": [], 'rotation_keys_size (MB)': [], "Final_Cost": []
+                        "total_execution_time (s)": [], "Remaining_noise_budget": [], 'rotation_keys_size (MB)': [], "final_ops_cost": [], "final_keys_cost": []
                         }
                         benchmark_name = f'tree_{regime}_{tree_depth}_{instance}'
                         print(f"Benchmark '{benchmark_name}' will be run...")
@@ -306,13 +309,16 @@ for subfolder_name in polynomial_folders:
                                     poly_mod_found = True
                                     for line in lines:
                                         clean_line = re.sub(r'\x1b\[[0-9;]*m', '', line)
-                                        if 'New cost' in clean_line:
-                                            try:
-                                                temp_cost = float(clean_line.split(':')[1].strip())
-                                            except (IndexError, ValueError):
-                                                pass
-                                        if 'Rule name' in clean_line and 'END' in clean_line:
-                                            operation_stats["Final_Cost"].append(temp_cost)                                      
+                                    if 'final ops cost:' in clean_line:
+                                        try:
+                                            operation_stats["final_ops_cost"].append(float(clean_line.split(':')[1].strip()))
+                                        except (IndexError, ValueError):
+                                            pass
+                                    if 'final keys cost:' in clean_line:
+                                        try:
+                                            operation_stats["final_keys_cost"].append(float(clean_line.split(':')[1].strip()))
+                                        except (IndexError, ValueError):
+                                            pass                                     
                                         if ' ms' in line:
                                             print(f"=======> compile_time line : {line}")
                                             optimization_time = float(line.split()[0])
