@@ -28,7 +28,8 @@ def set_random_seed(seed: int = 42):
     torch.backends.cudnn.benchmark = False
     os.environ['PYTHONHASHSEED'] = str(seed)
 
-def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 1_000_000, num_envs: int = 8 , seed: int = 42):
+def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 1_000_000, num_envs: int = 8 , seed: int = 42, 
+                lambda_env: float = 0.0, lambda_kl: float = 0.0, n_cycle: int = 1, n_budget: int = 5):
     set_random_seed(seed)
     N=11
     pref_list = generate_pref_list(N)
@@ -62,7 +63,7 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
         def _init():
             # Pass pref_list and rank to each env
             return Monitor(fheEnv(rules_list, expressions, max_positions=max_positions, embeddings_model=embeddings_model, 
-                                  pref_list=pref_list, lambda_env=lambda_env, env_idx=rank))
+                                  pref_list=pref_list, lambda_env=lambda_env, lambda_kl=lambda_kl, n_cycle=n_cycle, n_budget=n_budget, env_idx=rank))
         return _init  
     env = SubprocVecEnv([make_env(i, expressions) for i in range(num_envs)])
     env.seed(seed)     
