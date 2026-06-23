@@ -1,4 +1,4 @@
-benchmark,w_ops,w_keys,add,sub,multiply_plain,rotate_rows,negate,multiply,Depth,Multiplicative Depth,compile_time (s),circuit_execution_time (s),galois_keys_generation_time (s),total_execution_time (s),Remaining_noise_budget,rotation_keys_size (MB),Final_Cost
+benchmark,w_ops,w_keys,add,sub,multiply_plain,rotate_rows,negate,multiply,Depth,Multiplicative Depth,compile_time (s),circuit_execution_time (s),galois_keys_generation_time (s),total_execution_time (s),Remaining_noise_budget,rotation_key_size (MB),Final_Cost
 gx_kernel_4,1.0,0.0,4,0,1,1,2,3,6,1,34.316,0.488,0.112,0.600,328.0,18.1967,0.0
 gx_kernel_4,0.9,0.1,4,0,1,1,2,3,6,1,32.102,0.487,0.112,0.599,327.5,18.1967,0.0
 gx_kernel_4,0.8,0.2,4,0,1,1,2,3,6,1,31.684,0.487,0.112,0.599,327.5,18.1967,0.0
