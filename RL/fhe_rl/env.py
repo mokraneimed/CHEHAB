@@ -211,10 +211,16 @@ class fheEnv(gym.Env):
                 "l": self.steps,
                 "t": None
             }
-            print(f"\n initial ops cost: {self.initial_ops}")
-            print(f"\n initial keys cost: {self.initial_keys}")
-            print(f"\n final ops cost: {self.curr_ops}")
-            print(f"\n final keys cost: {self.curr_keys}")
+
+            if self.curr_ops > self.initial_ops:
+                self.expression = self.initial_expression
+                info["expression"] = self.initial_expression
+                self.curr_ops = self.initial_ops
+                
+            print(f"\n{BOLD}{MAGENTA}Initial exec cost {RESET}: {YELLOW}{self.initial_ops}{RESET}")
+            print(f"{BOLD}{MAGENTA}Initial keys cost {RESET}: {YELLOW}{self.initial_keys}{RESET}")
+            print(f"{BOLD}{MAGENTA}Final exec cost   {RESET}: {GREEN}{self.curr_ops}{RESET}")
+            print(f"{BOLD}{MAGENTA}Final keys cost   {RESET}: {GREEN}{self.curr_keys}{RESET}")
         obs = self._get_obs()    
         return obs, reward, terminated, truncated, {"expression": self.expression}
     

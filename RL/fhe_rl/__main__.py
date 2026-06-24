@@ -11,7 +11,7 @@ from .config import (
     get_model_path, get_tokenizer_type, 
     print_config
 )
-
+from .morl import run_interactive, add_subparser
 
 def parse_arguments(args=None):
     """Parse command line arguments"""
@@ -106,6 +106,8 @@ def parse_arguments(args=None):
     run_parser.add_argument('--w_ops', type=float, default=0.5, help='Weight for operations')
     run_parser.add_argument('--w_keys', type=float, default=0.5, help='Weight for keys')
 
+    add_subparser(subparsers)
+
     return parser.parse_args(args)
 
 
@@ -187,6 +189,8 @@ def main(args=None):
         embeddings, tokenizer = load_embeddings_from_config(parsed_args.tokenizer_type)
         run_agent(input_file, embeddings, agent_zip, output_file, w_ops=parsed_args.w_ops, w_keys=parsed_args.w_keys)
 
+    elif mode == "interactive":
+        run_interactive(mode=getattr(parsed_args, "interactive_mode", None))    
     else:
         print("Invalid command. Use 'train', 'test' or 'run'.")
         usage()
