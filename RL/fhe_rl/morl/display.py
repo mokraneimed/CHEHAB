@@ -62,10 +62,8 @@ def display_pareto_plot(front: list[dict], benchmark: str, slot_count: int) -> N
     ops_vals  = [p["final_exec_cost"]  for p in front]
     keys_vals = [p["final_keys_cost"] for p in front]
 
-    ops_max  = max(ops_vals)  or 1
-    keys_max = max(keys_vals) or 1
-    ops_n    = [v / ops_max  for v in ops_vals]
-    keys_n   = [v / keys_max for v in keys_vals]
+    ops_n  = ops_vals
+    keys_n = keys_vals
 
     fig, ax = plt.subplots(figsize=(7, 5))
     ax.scatter(ops_n, keys_n, color="steelblue", zorder=5, s=80)
@@ -81,8 +79,10 @@ def display_pareto_plot(front: list[dict], benchmark: str, slot_count: int) -> N
         f"Pareto Frontier — {benchmark} (slot={slot_count})",
         fontsize=12, fontweight="bold",
     )
-    ax.xaxis.set_major_formatter(mticker.PercentFormatter(xmax=1))
-    ax.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=1))
+    # ax.xaxis.set_major_formatter(mticker.PercentFormatter(xmax=1))
+    # ax.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=1))
+    ax.set_xlabel("Execution Cost", fontsize=11)
+    ax.set_ylabel("Key Size",       fontsize=11)
     ax.grid(True, linestyle="--", alpha=0.4)
     plt.tight_layout()
     plt.show()

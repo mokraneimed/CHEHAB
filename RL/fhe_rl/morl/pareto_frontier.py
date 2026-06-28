@@ -34,4 +34,12 @@ def get_pareto_frontier(points: list[dict]) -> list[dict]:
         and p.get("final_keys_cost") is not None
     ]
     front = [p for p in valid if not is_dominated(p, valid)]
+    seen = set()
+    deduped = []
+    for p in front:
+        key = (p["final_exec_cost"], p["final_keys_cost"])
+        if key not in seen:
+            seen.add(key)
+            deduped.append(p)
+    front = deduped    
     return sorted(front, key=lambda p: p["final_exec_cost"])

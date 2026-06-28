@@ -132,7 +132,7 @@ def run_direct_mode() -> None:
 
     benchmark  = _pick_benchmark()
     extra_args = _pick_poly_args() if is_poly_benchmark(benchmark) else None
-    slot_count = _pick_slot_count()
+    slot_count = 0 if is_poly_benchmark(benchmark) else _pick_slot_count()
     w_ops      = _pick_w_ops("w_exec (execution weight)")
 
     print()
@@ -150,8 +150,7 @@ def run_direct_mode() -> None:
     print(f"  Key size cost  : {result['final_keys_cost']}")
     print(_ok("  ---------------"))
 
-    if _ask("\nSave this solution to he/? (y/n)", "y").lower().startswith("y"):
-        save_solution_to_he(result)
+    save_solution_to_he(result)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -165,7 +164,7 @@ def run_menu_mode() -> None:
 
     benchmark  = _pick_benchmark()
     extra_args = _pick_poly_args() if is_poly_benchmark(benchmark) else None
-    slot_count = _pick_slot_count()
+    slot_count = 0 if is_poly_benchmark(benchmark) else _pick_slot_count()
     w_lo, w_hi = _pick_w_range()
     max_depth  = _pick_bisect_depth()
 
@@ -241,14 +240,10 @@ def run_menu_mode() -> None:
                 raise ValueError
             cwk = round(1.0 - cw, 10)
 
-            def _wc(p: dict) -> float:
-                return (cw  * (p["final_exec_cost"]  or 0.0)
-                        + cwk * (p["final_keys_cost"] or 0.0))
-
-            chosen = min(front, key=_wc)
-            print(_ok(f"  w_exec={cw:.4f}, w_keys={cwk:.4f} -> best solution is "
-                      f"#{front.index(chosen)+1}  "
-                      f"(w_exec·C_exec + w_keys·C_keys = {_wc(chosen):.2f})"))
+            chosen = min(front, key=lambda p: abs(p["w_ops"] - cw))
+            print(_ok(f"  w_exec={cw:.4f} -> nearest solution is "
+                    f"#{front.index(chosen)+1}  "
+                    f"(w_exec={chosen['w_ops']:.4f})"))            
         except ValueError:
             print(_err("  Could not parse input."))
             return
@@ -262,9 +257,9 @@ def run_menu_mode() -> None:
           f"ops={chosen['final_exec_cost']}  "
           f"keys={chosen['final_keys_cost']}")
 
-    if _ask("\nSave this solution to he/? (y/n)", "y").lower().startswith("y"):
-        save_solution_to_he(chosen)
-        cleanup_solutions_cache()
+    
+    save_solution_to_he(chosen)
+    cleanup_solutions_cache()
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
