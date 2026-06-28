@@ -114,11 +114,11 @@ def parse_arguments(args=None):
 def usage() -> None:
     print(
         "Usage:\n"
-        "  python -m fhe_rl train [options]\n"
-        "  python -m fhe_rl test  [--tokenizer_type {dynamic,bpe}]\n"
-        "  python -m fhe_rl run   [--tokenizer_type {dynamic,bpe}] "
-        "<input_expr_file> <output_vector_file>\n"
-        "  python -m fhe_rl --show_config\n"
+        "  python -m fhe_rl train [options]      Train the MORL agent\n"
+        "  python -m fhe_rl interactive [--mode {direct,menu}]\n"
+        "                                         Optimise FHE circuits interactively\n"
+        "                                         direct: single preference -> one circuit\n"
+        "                                         menu:   preference range  -> Pareto frontier + selection\n"
         "\n"
         "Train options:\n"
         "  --dataset PATH              Training expressions file\n"
