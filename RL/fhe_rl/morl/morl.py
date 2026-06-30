@@ -216,37 +216,45 @@ def run_menu_mode() -> None:
 
     # ── User selection ────────────────────────────────────────────────────────
     print(_h("Select a solution:"))
-    print("  - Solution number  (e.g. 2)")
-    print("  - Custom w_exec    (e.g. 0.75)")
-    print("  - Press Enter to skip")
+    print("  1. Pick by solution number")
+    print("  2. Pick by custom w_exec weight")
+    print("  3. Skip")
 
     chosen: Optional[dict] = None
-    raw = _ask("\nYour choice", "")
-    if not raw:
+    mode_raw = _ask("\nSelection method", "1")
+
+    if mode_raw == "3" or not mode_raw:
         print("  No selection - exiting.")
         return
-
-    try:
-        idx = int(raw) - 1
-        if 0 <= idx < len(front):
-            chosen = front[idx]
-        else:
-            print(_err(f"  Index out of range (1-{len(front)})."))
-            return
-    except ValueError:
+    elif mode_raw == "1":
+        raw = _ask(f"Solution number (1-{len(front)})", "1")
         try:
-            cw  = float(raw)
+            idx = int(raw) - 1
+            if 0 <= idx < len(front):
+                chosen = front[idx]
+            else:
+                print(_err(f"  Index out of range (1-{len(front)})."))
+                return
+        except ValueError:
+            print(_err("  Invalid number."))
+            return
+    elif mode_raw == "2":
+        raw = _ask("Custom w_exec (0-1)", "0.5")
+        try:
+            cw = float(raw)
             if not 0.0 <= cw <= 1.0:
                 raise ValueError
             cwk = round(1.0 - cw, 10)
-
             chosen = min(front, key=lambda p: abs(p["w_ops"] - cw))
             print(_ok(f"  w_exec={cw:.4f} -> nearest solution is "
-                    f"#{front.index(chosen)+1}  "
-                    f"(w_exec={chosen['w_ops']:.4f})"))            
+                      f"#{front.index(chosen)+1}  "
+                      f"(w_exec={chosen['w_ops']:.4f})"))
         except ValueError:
-            print(_err("  Could not parse input."))
+            print(_err("  Must be a float in [0, 1]."))
             return
+    else:
+        print(_err("  Invalid choice."))
+        return
 
     if chosen is None:
         return
