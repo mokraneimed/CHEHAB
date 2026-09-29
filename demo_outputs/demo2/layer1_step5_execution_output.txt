@@ -1,0 +1,21 @@
+======================================================================
+  STEP 5 — FHE EXECUTION OUTPUT (Lattigo CKKS)
+======================================================================
+
+Operator:       matmul_4x4
+Input value:    x = 0.95  (all cipher slots set to this value)
+Expected output (plaintext): 3.610000
+Decrypted output (CKKS):     3.610000
+Absolute error:              5.12e-10
+
+Phase                              Time
+---------------------------- ----------
+KeyGen                             31 ms
+Encrypt                            65 ms
+Eval (homomorphic)                 32 ms
+Decrypt                             9 ms
+---------------------------- ----------
+TOTAL                             137 ms
+
+Precision:  30.9 bits
+Status:     PASS (>= 10 bits)

@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Rewrite rule functionality."""
 
 from typing import List, Dict, Union, Tuple, Optional
@@ -451,7 +452,7 @@ class RewriteRule:
             self._find_matches_recursive(expr, [], matches)
             valid = [(p, m) for p, m in matches
                     if self._apply_via_path(expr, p) is not None]
-            return [([], expr)] if valid else []            
+            return [([], expr)] if valid else []
         else:
             # Regular rules
             matches: List[Tuple[List[int], Expr]] = []
@@ -510,10 +511,9 @@ class RewriteRule:
             # enqueue children one level deeper
             if isinstance(node, Op):
                 if self.rule_type == "de-rotate":
-                    # no guard — traverse all children
                     for i, child in enumerate(node.args):
                         queue.append((cur_path + [i], child))
-                else:        
+                else:
                     rotation = False
                     
                     for rule in self.rotation_rules:
@@ -549,13 +549,8 @@ class RewriteRule:
                 new_vec  = rec(node.args[0], subpath[1:])   # rewrite left
                 other    = node.args[1]
                 new_other = other  # default: no change
-                # common form  (<< old_vec shift)
-                if (isinstance(other, Op)
-                        and other.op == "<<" and len(other.args) >= 1):
-                    new_other = Op("<<", [new_vec, *other.args[1:]])
-                # else:
-                #     # generic deep replace if the structure is different
-                #     new_other = self._replace_expr(other, node.args[0], new_vec)
+                # generic deep replace if the structure is different
+                new_other = self._replace_expr(other, node.args[0], new_vec)
 
                 return Op(node.op, [new_vec, new_other])
 
@@ -602,7 +597,7 @@ class RewriteRule:
             if not valid:
                 break
             expr = self._apply_via_path(expr, valid[0][0])
-        return expr        
+        return expr
 
     def _apply_rule_match(self, expr: Expr, match: Expr) -> Expr:
         if expr is match:

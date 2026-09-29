@@ -1,1 +1,8 @@
+__pycache__/
+*.pyc
 rl_venv/
+tensorboard/
+eval/
+old_test_results/
+job_logs.xlsx
+test_results.xlsx

@@ -410,16 +410,15 @@ void gen_main_code(fheco::param_select::EncParams params,param_select::EncParams
       RelinKeys relin_keys;
       keygen.create_relin_keys(relin_keys);
       GaloisKeys galois_keys; 
-      //keygen.create_galois_keys(galois_keys);
       chrono::high_resolution_clock::time_point keys_time;
       chrono::duration<double, milli> keys_elapsed;
       keys_time = chrono::high_resolution_clock::now();      
+      //keygen.create_galois_keys(galois_keys);
       keygen.create_galois_keys(get_rotation_steps_fhe(), galois_keys);
       keys_elapsed = chrono::high_resolution_clock::now() - keys_time;
 
       size_t galois_keys_total_size = galois_keys.save_size();
       cout << "rotation_keys_size_(MB): " << galois_keys_total_size / (1024.0 * 1024.0) << endl;
-
       Encryptor encryptor(context, public_key);
       Evaluator evaluator(context);
       Decryptor decryptor(context, secret_key);
@@ -449,6 +448,7 @@ void gen_main_code(fheco::param_select::EncParams params,param_select::EncParams
       cout <<"galois_keys_generation_time_(ms): "<<keys_elapsed.count() <<"\n"<<std::flush;
       double total_time = elapsed.count() + keys_elapsed.count();
       cout <<"total_execution_time_(ms): "<<total_time <<"\n"<<std::flush;
+      print_variables_values(obtained_clear_outputs, std::cout);
     }
     )"
     }; 
