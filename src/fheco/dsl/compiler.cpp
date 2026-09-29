@@ -221,8 +221,68 @@ void Compiler::gen_heongpu_code(
   // We add explicit relin for HEonGPU (similar to SEAL)
   passes::relin_after_ctxt_ctxt_mul(func);
 
+  param_select::EncParams bfv_params;
+  ckks::CKKSParams ckks_params;
+
+  if (scheme == 0) {
+    param_select::ParameterSelector selector(func, param_select::EncParams::SecurityLevel::tc128);
+    bool use_mod_switch = false;
+    if (auto_enc_params_selection_enabled()) {
+      bfv_params = selector.select_params(use_mod_switch);
+    } else {
+      bfv_params = param_select::EncParams(16384, func->plain_modulus());
+    }
+  } else {
+    std::unordered_map<std::size_t, size_t> term_mul_depth;
+    size_t max_mul_depth = 0;
+    
+    for (auto* term : func->get_top_sorted_terms())
+    {
+      size_t depth = 0;
+      for (auto* operand : term->operands())
+      {
+        auto it = term_mul_depth.find(operand->id());
+        if (it != term_mul_depth.end())
+          depth = std::max(depth, it->second);
+      }
+      
+      auto op_type = term->op_code().type();
+      if (op_type == ir::OpCode::Type::mul || op_type == ir::OpCode::Type::square)
+      {
+        bool is_ctxt_ctxt = (op_type == ir::OpCode::Type::square);
+        if (!is_ctxt_ctxt && term->operands().size() >= 2)
+        {
+          auto* op1 = term->operands()[0];
+          auto* op2 = term->operands()[1];
+          is_ctxt_ctxt = (op1->type() == ir::Term::Type::cipher && 
+                          op2->type() == ir::Term::Type::cipher);
+        }
+        if (is_ctxt_ctxt)
+          ++depth;
+      }
+      
+      term_mul_depth[term->id()] = depth;
+      max_mul_depth = std::max(max_mul_depth, depth);
+    }
+    
+    const size_t MAX_DEPTH_WITHOUT_BOOTSTRAP = 12;
+    bool needs_bootstrap = (max_mul_depth > MAX_DEPTH_WITHOUT_BOOTSTRAP);
+    size_t mul_depth = needs_bootstrap ? MAX_DEPTH_WITHOUT_BOOTSTRAP : std::max(max_mul_depth + 1, static_cast<size_t>(3));
+    
+    if (needs_bootstrap)
+    {
+      ckks_params = ckks::CKKSParamSelector::default_params_with_bootstrap(mul_depth);
+      ckks_params.enable_bootstrap = true;
+    }
+    else
+    {
+      ckks_params = ckks::CKKSParamSelector::default_params(mul_depth);
+      ckks_params.enable_bootstrap = false;
+    }
+  }
+
   // Call the generator
-  code_gen::heongpu::gen_func_heongpu(func, rotation_steps_keys, cu_os, func->name(), scheme);
+  code_gen::heongpu::gen_func_heongpu(func, rotation_steps_keys, cu_os, func->name(), scheme, &bfv_params, &ckks_params);
 }
 
 /***********************************************************************/

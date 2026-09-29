@@ -47,3 +47,11 @@ add_custom_target(copy_my_file_4sort ALL
     DEPENDS ${SOURCE_FILE}
     COMMENT "Copying ${SOURCE_FILE_4} to ${DESTINATION_FILE_4}"
 )
+set(SOURCE_FILE_COMPILE_CUDA_sort ${CMAKE_SOURCE_DIR}/benchmarks/sort/compile_cuda.py)
+set(DESTINATION_FILE_COMPILE_CUDA_sort ${CMAKE_SOURCE_DIR}/build/benchmarks/sort/compile_cuda.py)
+add_custom_target(copy_compile_cuda_sort ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_COMPILE_CUDA_sort} ${DESTINATION_FILE_COMPILE_CUDA_sort}
+    DEPENDS ${SOURCE_FILE_COMPILE_CUDA_sort}
+    COMMENT "Copying ${SOURCE_FILE_COMPILE_CUDA_sort} to ${DESTINATION_FILE_COMPILE_CUDA_sort}"
+)
+

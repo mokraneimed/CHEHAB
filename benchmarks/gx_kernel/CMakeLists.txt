@@ -52,3 +52,11 @@ add_custom_target(copy_my_file_4gx_kernel ALL
     DEPENDS ${SOURCE_FILE}
     COMMENT "Copying ${SOURCE_FILE_4} to ${DESTINATION_FILE_4}"
 )
+set(SOURCE_FILE_COMPILE_CUDA_gx_kernel ${CMAKE_SOURCE_DIR}/benchmarks/gx_kernel/compile_cuda.py)
+set(DESTINATION_FILE_COMPILE_CUDA_gx_kernel ${CMAKE_SOURCE_DIR}/build/benchmarks/gx_kernel/compile_cuda.py)
+add_custom_target(copy_compile_cuda_gx_kernel ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_COMPILE_CUDA_gx_kernel} ${DESTINATION_FILE_COMPILE_CUDA_gx_kernel}
+    DEPENDS ${SOURCE_FILE_COMPILE_CUDA_gx_kernel}
+    COMMENT "Copying ${SOURCE_FILE_COMPILE_CUDA_gx_kernel} to ${DESTINATION_FILE_COMPILE_CUDA_gx_kernel}"
+)
+

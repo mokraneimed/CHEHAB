@@ -52,3 +52,11 @@ add_custom_target(copy_my_file_4roberts_cross ALL
     DEPENDS ${SOURCE_FILE}
     COMMENT "Copying ${SOURCE_FILE_4} to ${DESTINATION_FILE_4}"
 )
+set(SOURCE_FILE_COMPILE_CUDA_roberts_cross ${CMAKE_SOURCE_DIR}/benchmarks/roberts_cross/compile_cuda.py)
+set(DESTINATION_FILE_COMPILE_CUDA_roberts_cross ${CMAKE_SOURCE_DIR}/build/benchmarks/roberts_cross/compile_cuda.py)
+add_custom_target(copy_compile_cuda_roberts_cross ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_COMPILE_CUDA_roberts_cross} ${DESTINATION_FILE_COMPILE_CUDA_roberts_cross}
+    DEPENDS ${SOURCE_FILE_COMPILE_CUDA_roberts_cross}
+    COMMENT "Copying ${SOURCE_FILE_COMPILE_CUDA_roberts_cross} to ${DESTINATION_FILE_COMPILE_CUDA_roberts_cross}"
+)
+

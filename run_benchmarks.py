@@ -64,8 +64,8 @@ benchmarks_slot_counts = {
 optimization_method = 1  # 0 = egraph (default), 1 = RL
 cse_enabled = 1
 vectorize_code = 1
-slot_counts = [4, 8, 16, 32]
-pref_list = generate_pref_list(3)
+slot_counts = [4, 8]
+pref_list = generate_pref_list(11)
 iterations = 2  # minimum 2
 window_size = 0
 depths = [5, 10]
@@ -138,7 +138,7 @@ for subfolder_name in benchmark_folders:
                     for iteration in range(iterations):
                         print(f"===> Running iteration : {iteration + 1}")
                         # Step 1: Run the first benchmark command
-                        benchmark_run_command = f"./{subfolder_name} {vectorize_code} {slot_count} constrained {optimization_method} {window_size} 1 {cse_enabled}  1 0 {w_ops}"
+                        benchmark_run_command = f"./{subfolder_name} {vectorize_code} {slot_count} morl {optimization_method} {window_size} 1 {cse_enabled}  1 0 {w_ops}"
                         try:
                             result = subprocess.run(
                                 benchmark_run_command,
@@ -158,15 +158,15 @@ for subfolder_name in benchmark_folders:
                             temp_cost = 0.0
                             for line in lines:
                                 clean_line = re.sub(r"\x1b\[[0-9;]*m", "", line)
-                                # print(line)
-                                if "final ops cost:" in clean_line:
+                                clean_lower = clean_line.lower()
+                                if "final exec cost" in clean_lower:
                                     try:
                                         operation_stats["final_ops_cost"].append(
                                             float(clean_line.split(":")[1].strip())
                                         )
                                     except (IndexError, ValueError):
                                         pass
-                                if "final keys cost:" in clean_line:
+                                if "final keys cost" in clean_lower:
                                     try:
                                         operation_stats["final_keys_cost"].append(
                                             float(clean_line.split(":")[1].strip())
@@ -401,7 +401,7 @@ for subfolder_name in polynomial_folders:
                             multiplicative_depth = ""
                             if os.path.isdir(build_path):
                                 print(f"=========> Iteration : {iteration+1}")
-                                command = f"./{subfolder_name} {tree_depth} {instance} {regime} {vectorize_code} {optimization_method} {window_size} 1 {cse_enabled} 1 0 {w_ops}"
+                                command = f"./{subfolder_name} {tree_depth} {instance} {regime} {vectorize_code} morl {optimization_method} {window_size} 1 {cse_enabled} 1 0 {w_ops}"
                                 try:
                                     result = subprocess.run(
                                         command,
@@ -418,20 +418,21 @@ for subfolder_name in polynomial_folders:
                                     poly_mod_found = True
                                     for line in lines:
                                         clean_line = re.sub(r"\x1b\[[0-9;]*m", "", line)
-                                    if "final ops cost:" in clean_line:
-                                        try:
-                                            operation_stats["final_ops_cost"].append(
-                                                float(clean_line.split(":")[1].strip())
-                                            )
-                                        except (IndexError, ValueError):
-                                            pass
-                                    if "final keys cost:" in clean_line:
-                                        try:
-                                            operation_stats["final_keys_cost"].append(
-                                                float(clean_line.split(":")[1].strip())
-                                            )
-                                        except (IndexError, ValueError):
-                                            pass
+                                        clean_lower = clean_line.lower()
+                                        if "final exec cost" in clean_lower:
+                                            try:
+                                                operation_stats["final_ops_cost"].append(
+                                                    float(clean_line.split(":")[1].strip())
+                                                )
+                                            except (IndexError, ValueError):
+                                                pass
+                                        if "final keys cost" in clean_lower:
+                                            try:
+                                                operation_stats["final_keys_cost"].append(
+                                                    float(clean_line.split(":")[1].strip())
+                                                )
+                                            except (IndexError, ValueError):
+                                                pass
                                         if " ms" in line:
                                             print(
                                                 f"=======> compile_time line : {line}"

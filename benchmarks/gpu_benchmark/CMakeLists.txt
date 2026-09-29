@@ -81,3 +81,12 @@ endfunction()
 
 add_heongpu_benchmark(gpu_benchmark gpu_benchmark.cu)
 add_heongpu_benchmark(gpu_dnn_benchmark gpu_dnn_benchmark.cu)
+
+set(SOURCE_FILE_COMPILE_CUDA_gpu_benchmark ${CMAKE_SOURCE_DIR}/benchmarks/gpu_benchmark/compile_cuda.py)
+set(DESTINATION_FILE_COMPILE_CUDA_gpu_benchmark ${CMAKE_SOURCE_DIR}/build/benchmarks/gpu_benchmark/compile_cuda.py)
+add_custom_target(copy_compile_cuda_gpu_benchmark ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_COMPILE_CUDA_gpu_benchmark} ${DESTINATION_FILE_COMPILE_CUDA_gpu_benchmark}
+    DEPENDS ${SOURCE_FILE_COMPILE_CUDA_gpu_benchmark}
+    COMMENT "Copying ${SOURCE_FILE_COMPILE_CUDA_gpu_benchmark} to ${DESTINATION_FILE_COMPILE_CUDA_gpu_benchmark}"
+)
+

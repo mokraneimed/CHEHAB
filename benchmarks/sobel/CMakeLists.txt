@@ -52,3 +52,11 @@ add_custom_target(copy_my_file_4sobel ALL
     DEPENDS ${SOURCE_FILE}
     COMMENT "Copying ${SOURCE_FILE_4} to ${DESTINATION_FILE_4}"
 )
+set(SOURCE_FILE_COMPILE_CUDA_sobel ${CMAKE_SOURCE_DIR}/benchmarks/sobel/compile_cuda.py)
+set(DESTINATION_FILE_COMPILE_CUDA_sobel ${CMAKE_SOURCE_DIR}/build/benchmarks/sobel/compile_cuda.py)
+add_custom_target(copy_compile_cuda_sobel ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_COMPILE_CUDA_sobel} ${DESTINATION_FILE_COMPILE_CUDA_sobel}
+    DEPENDS ${SOURCE_FILE_COMPILE_CUDA_sobel}
+    COMMENT "Copying ${SOURCE_FILE_COMPILE_CUDA_sobel} to ${DESTINATION_FILE_COMPILE_CUDA_sobel}"
+)
+

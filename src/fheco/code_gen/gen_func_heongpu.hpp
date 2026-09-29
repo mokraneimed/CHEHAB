@@ -16,6 +16,9 @@ namespace fheco::ir
 class Func;
 } // namespace fheco::ir
 
+namespace fheco::param_select { class EncParams; }
+namespace fheco::ckks { struct CKKSParams; }
+
 namespace fheco::code_gen::heongpu
 {
 
@@ -29,7 +32,9 @@ using TermsCtxtObjectsInfo = std::unordered_map<std::size_t, CtxtObjectInfo>;
 
 void gen_func_heongpu(
   const std::shared_ptr<ir::Func> &func, const std::unordered_set<int> &rotation_steps,
-  std::ostream &cu_os, std::string_view func_name, int scheme);
+  std::ostream &cu_os, std::string_view func_name, int scheme,
+  const param_select::EncParams* bfv_params = nullptr,
+  const ckks::CKKSParams* ckks_params = nullptr);
 
 void gen_input_terms(
   const ir::InputTermsInfo &input_terms_info, std::ostream &os, TermsCtxtObjectsInfo &terms_ctxt_objects_info, int scheme);

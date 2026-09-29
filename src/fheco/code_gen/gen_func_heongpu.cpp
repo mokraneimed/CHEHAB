@@ -1,5 +1,7 @@
 #include "fheco/code_gen/gen_func_heongpu.hpp"
 #include "fheco/code_gen/constants_heongpu.hpp"
+#include "fheco/param_select/enc_params.hpp"
+#include "fheco/ckks/ckks_params.hpp"
 #include "fheco/ir/common.hpp"
 #include "fheco/ir/func.hpp"
 #include "fheco/passes/prepare_code_gen.hpp"
@@ -24,7 +26,9 @@ void gen_func_heongpu(
   const unordered_set<int> &rotation_steps,
   ostream &os,
   string_view func_name,
-  int scheme)
+  int scheme,
+  const param_select::EncParams* bfv_params,
+  const ckks::CKKSParams* ckks_params)
 {
   passes::prepare_code_gen(func);
   
@@ -83,15 +87,51 @@ void gen_func_heongpu(
 
   // Generate main()
   os << "int main(int argc, char **argv) {\n";
-  os << "    int poly_modulus_degree = 16384;\n";
   if (scheme == 0) { // BFV
-    os << "    std::vector<int> q_bits = {60, 40, 40, 60};\n";
-    os << "    std::vector<int> p_bits = {60};\n";
-    os << "    int plain_modulus = 1032193;\n";
+    if (bfv_params) {
+        os << "    int poly_modulus_degree = " << bfv_params->poly_mod_degree() << ";\n";
+        os << "    std::vector<int> q_bits = {";
+        auto sizes = bfv_params->coeff_mod_bit_sizes();
+        for (size_t i = 0; i < sizes.size() - 1; ++i) {
+            if (i > 0) os << ", ";
+            os << sizes[i];
+        }
+        os << "};\n";
+        os << "    std::vector<int> p_bits = {" << sizes.back() << "};\n";
+        // Heuristic to pick an appropriate NTT plain modulus based on N
+        if (bfv_params->poly_mod_degree() >= 16384) {
+            os << "    int plain_modulus = 786433;\n";
+        } else {
+            os << "    int plain_modulus = 1032193;\n";
+        }
+    } else {
+        os << "    int poly_modulus_degree = 16384;\n";
+        os << "    std::vector<int> q_bits = {60, 40, 40, 60};\n";
+        os << "    std::vector<int> p_bits = {60};\n";
+        os << "    int plain_modulus = 786433;\n";
+    }
   } else { // CKKS
-    os << "    std::vector<int> q_bits = {60, 40, 40, 40, 40, 40, 40, 40};\n";
-    os << "    std::vector<int> p_bits = {60};\n";
-    os << "    double scale = pow(2.0, 40);\n";
+    if (ckks_params) {
+        os << "    int poly_modulus_degree = " << ckks_params->poly_modulus_degree() << ";\n";
+        os << "    std::vector<int> q_bits = {";
+        for (size_t i = 0; i < ckks_params->log_q.size(); ++i) {
+            if (i > 0) os << ", ";
+            os << ckks_params->log_q[i];
+        }
+        os << "};\n";
+        os << "    std::vector<int> p_bits = {";
+        for (size_t i = 0; i < ckks_params->log_p.size(); ++i) {
+            if (i > 0) os << ", ";
+            os << ckks_params->log_p[i];
+        }
+        os << "};\n";
+        os << "    double scale = pow(2.0, " << ckks_params->log_scale << ");\n";
+    } else {
+        os << "    int poly_modulus_degree = 16384;\n";
+        os << "    std::vector<int> q_bits = {60, 40, 40, 40, 40, 40, 40, 40};\n";
+        os << "    std::vector<int> p_bits = {60};\n";
+        os << "    double scale = pow(2.0, 40);\n";
+    }
   }
 
   os << "    heongpu::HEContext<SCHEME> context = heongpu::GenHEContext<SCHEME>();\n";
