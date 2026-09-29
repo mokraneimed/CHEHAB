@@ -207,9 +207,14 @@ int main(int argc, char **argv) {
         optimization_method = stoi(argv[6]);
 
     float w_ops = 0.5;
-    float w_keys = 0.5;
+    
     if (argc > 12) w_ops = stof(argv[12]);
-    if (argc > 13) w_keys = stof(argv[13]);
+  if (w_ops < 0.0f || w_ops > 1.0f) {
+      std::cerr << "Error: w_ops must be between 0 and 1" << std::endl;
+      return 1;
+  }
+  float w_keys = 1.0f - w_ops;
+
     
     if (cse) {
         Compiler::enable_cse();

@@ -193,8 +193,8 @@ def parse_arguments(args=None):
     run_parser = subparsers.add_parser('run', help='Run the agent')
     run_parser.add_argument('input_expr_file', help='Input expression file')
     run_parser.add_argument('output_vector_file', help='Output vector file')
-    run_parser.add_argument('--w_ops', type=float, default=0.5, help='Weight for operations')
-    run_parser.add_argument('--w_keys', type=float, default=0.5, help='Weight for keys')
+    run_parser.add_argument('--w_ops', type=float, default=0.5, help='Weight for execution time (operations). Must be between 0 and 1.')
+
     
     # Interactive command from MORL
     add_subparser(subparsers)
@@ -317,6 +317,10 @@ def main(args=None):
         output_file = parsed_args.output_vector_file
         embeddings, tokenizer = load_embeddings_from_config(parsed_args.tokenizer_type)
         if framework_name == "mo":
+            if not (0.0 <= parsed_args.w_ops <= 1.0):
+                print("Error: w_ops must be between 0 and 1.")
+                sys.exit(1)
+            parsed_args.w_keys = 1.0 - parsed_args.w_ops
             agent_zip = get_model_path("mo_agent_model")
             from .run_mo import run_agent_mo
             run_agent_mo(input_file, embeddings, agent_zip, output_file, w_ops=parsed_args.w_ops, w_keys=parsed_args.w_keys)

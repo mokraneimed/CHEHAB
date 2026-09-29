@@ -93,7 +93,7 @@ def run_benchmark(subfolder_name, slot_count, w_ops, w_keys, build_path, build_p
 
     for iteration in range(iterations):
         print(f"===> Running iteration : {iteration + 1}")
-        benchmark_run_command = f"./{subfolder_name} {vectorize_code} {slot_count} morl {optimization_method} {window_size} 1 {cse_enabled} 1 0 {w_ops} {w_keys}"
+        benchmark_run_command = f"./{subfolder_name} {vectorize_code} {slot_count} morl {optimization_method} {window_size} 1 {cse_enabled} 1 0 {w_ops}"
         try:
             result = subprocess.run(
                 benchmark_run_command, shell=True, check=False,
@@ -371,7 +371,7 @@ def run_poly_benchmark(subfolder_name, build_path, build_path_he, build_path_he_
         print(f"=========> Iteration : {iteration + 1}")
         command = (f"./{subfolder_name} {tree_depth} {instance} {regime} "
                    f"{vectorize_code} {optimization_method} {window_size} "
-                   f"1 {cse_enabled} 1 0 {w_ops} {w_keys}")
+                   f"1 {cse_enabled} 1 0 {w_ops}")
         try:
             result = subprocess.run(
                 command, shell=True, check=True,

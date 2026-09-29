@@ -134,7 +134,7 @@ Navigate to your benchmark folder in the `build` directory and run the compilati
 ```bash
 cd build/benchmarks/dot_product
 python3 generate_dot_product.py --slot_count 4
-./dot_product 1 4 morl 1 0 1 1 1 1 0.8 0.2
+./dot_product 1 4 morl 1 0 1 1 1 1 0.8
 ```
 
 *(Note: The 3rd argument `morl` selects the Multi-Objective RL framework. You can replace this with `constrained` to use the constrained optimization framework instead.)*
@@ -142,7 +142,7 @@ python3 generate_dot_product.py --slot_count 4
 #### General Command Format
 
 ```bash
-./<benchmark> <vectorize_code> <slot_count> <framework> <optimization_method> <window> <call_quantifier> <cse> <const_folding> <backend> <w_ops> <w_keys>
+./<benchmark> <vectorize_code> <slot_count> <framework> <optimization_method> <window> <call_quantifier> <cse> <const_folding> <backend> <w_ops>
 ```
 
 | Argument            | Description                               |
@@ -156,8 +156,7 @@ python3 generate_dot_product.py --slot_count 4
 | `cse`               | 0/1 - Enable common subexpression elimination |
 | `const_folding`     | 0/1 - Enable constant folding             |
 | `backend`           | Backend target (0 for SEAL, 1 for Lattigo, 2 for HEonGPU). For our Lattigo guide, use `1` |
-| `w_ops`             | Weight for operations in RL (e.g., 0.8)   |
-| `w_keys`            | Weight for keys in RL (e.g., 0.2)         |
+| `w_ops`             | Weight for execution time (operations) in RL (e.g., 0.8). Must be between 0 and 1. Note: `w_keys` (weight for keys) is automatically computed as `1 - w_ops`. |
 
 ---
 

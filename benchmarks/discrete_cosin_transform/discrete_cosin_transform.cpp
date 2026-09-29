@@ -84,11 +84,14 @@ int main(int argc, char **argv)
   if (argc > 9)
     backend = stoi(argv[9]);
 
-  float w_ops = 0.5;
-  float w_keys = 0.5;
+  float w_ops = 0.5;if (argc > 10) w_ops = stof(argv[10]);
+  
+  if (w_ops < 0.0f || w_ops > 1.0f) {
+      std::cerr << "Error: w_ops must be between 0 and 1" << std::endl;
+      return 1;
+  }
+  float w_keys = 1.0f - w_ops;
 
-  if (argc > 10) w_ops = stof(argv[10]);
-  if (argc > 11) w_keys = stof(argv[11]);
 if (cse)
   {
     Compiler::enable_cse();

@@ -138,7 +138,7 @@ for subfolder_name in benchmark_folders:
                     for iteration in range(iterations):
                         print(f"===> Running iteration : {iteration + 1}")
                         # Step 1: Run the first benchmark command
-                        benchmark_run_command = f"./{subfolder_name} {vectorize_code} {slot_count} constrained {optimization_method} {window_size} 1 {cse_enabled}  1 0 {w_ops} {w_keys}"
+                        benchmark_run_command = f"./{subfolder_name} {vectorize_code} {slot_count} constrained {optimization_method} {window_size} 1 {cse_enabled}  1 0 {w_ops}"
                         try:
                             result = subprocess.run(
                                 benchmark_run_command,
@@ -401,7 +401,7 @@ for subfolder_name in polynomial_folders:
                             multiplicative_depth = ""
                             if os.path.isdir(build_path):
                                 print(f"=========> Iteration : {iteration+1}")
-                                command = f"./{subfolder_name} {tree_depth} {instance} {regime} {vectorize_code} {optimization_method} {window_size} 1 {cse_enabled} 1 0 {w_ops} {w_keys}"
+                                command = f"./{subfolder_name} {tree_depth} {instance} {regime} {vectorize_code} {optimization_method} {window_size} 1 {cse_enabled} 1 0 {w_ops}"
                                 try:
                                     result = subprocess.run(
                                         command,
