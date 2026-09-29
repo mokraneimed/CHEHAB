@@ -729,14 +729,14 @@ void Compiler::call_rl_vectorizer(int vector_width, float w_ops, float w_keys, c
   cmd << "python -m fhe_rl ";
   if (!framework.empty()) {
       cmd << "--framework " << framework << " ";
-  } else if (w_ops >= 0.0f && w_keys >= 0.0f) {
+  } else if (w_ops >= 0.0f) {
       cmd << "--framework morl ";
   }
   cmd << "run "
       << "'" << expr_file.string() << "' "
       << "'" << vect_file.string() << "'";
-  if (w_ops >= 0.0f && w_keys >= 0.0f) {
-      cmd << " --w_ops " << w_ops << " --w_keys " << w_keys;
+  if (w_ops >= 0.0f) {
+      cmd << " --w_ops " << w_ops;
   }
   std::cout << "Executing: " << cmd.str() << '\n';
   const int rc = std::system(cmd.str().c_str());
