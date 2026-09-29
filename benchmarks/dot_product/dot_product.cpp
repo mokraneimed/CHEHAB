@@ -91,8 +91,8 @@ int main(int argc, char **argv)
   }
   float w_keys = 1.0f - w_ops;
 
-int scheme = 1; // 0 = BFV, 1 = CKKS
-  if (argc > 12) scheme = stoi(argv[12]);
+int scheme = 0; // 0 = BFV, 1 = CKKS
+  if (argc > 11) scheme = stoi(argv[11]);
 
   if (cse)
   {

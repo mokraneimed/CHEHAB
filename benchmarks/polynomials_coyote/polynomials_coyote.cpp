@@ -215,6 +215,12 @@ int main(int argc, char **argv) {
   }
   float w_keys = 1.0f - w_ops;
 
+  int backend = 0;
+  if (argc > 9) backend = stoi(argv[9]);
+
+  int scheme = 0; // 0 = BFV, 1 = CKKS
+  if (argc > 11) scheme = stoi(argv[11]);
+
     
     if (cse) {
         Compiler::enable_cse();
@@ -262,7 +268,29 @@ int main(int argc, char **argv) {
         Compiler::compile(func, ruleset, rewrite_heuristic);
         }
         /********** FHE code generation  *****************************/
-        Compiler::gen_he_code(func, header_os, gen_name + ".hpp", source_os);
+        if (backend == 0) {
+          // SEAL backend (C++)
+          Compiler::gen_he_code(func, header_os, gen_name + ".hpp", source_os);
+          cout << "Generated SEAL code: " << gen_path << ".hpp/.cpp" << endl;
+        } else if (backend == 1) {
+          // Lattigo backend (Go/CKKS)
+          string go_path = "generated_" + func_name + ".go";
+          ofstream go_os(go_path);
+          if (!go_os)
+            throw logic_error("failed to create Go file");
+          Compiler::gen_lattigo_code(func, go_os);
+          go_os.close();
+          cout << "Generated Lattigo code: " << go_path << endl;
+        } else if (backend == 2) {
+          // HEonGPU backend (CUDA)
+          string cu_path = "generated_" + func_name + ".cu";
+          ofstream cu_os(cu_path);
+          if (!cu_os)
+            throw logic_error("failed to create CUDA file");
+          Compiler::gen_heongpu_code(func, cu_os, scheme);
+          cu_os.close();
+          cout << "Generated HEonGPU code: " << cu_path << endl;
+        }
         
         /************/elapsed = chrono::high_resolution_clock::now() - t;
         cout << elapsed.count() << " ms\n";
@@ -293,7 +321,29 @@ int main(int argc, char **argv) {
         auto ruleset = Compiler::Ruleset::simplification_ruleset;
         auto rewrite_heuristic = trs::RewriteHeuristic::bottom_up;
         Compiler::compile(func, ruleset, rewrite_heuristic);
-        Compiler::gen_he_code(func, header_os, gen_name + ".hpp", source_os);
+        if (backend == 0) {
+          // SEAL backend (C++)
+          Compiler::gen_he_code(func, header_os, gen_name + ".hpp", source_os);
+          cout << "Generated SEAL code: " << gen_path << ".hpp/.cpp" << endl;
+        } else if (backend == 1) {
+          // Lattigo backend (Go/CKKS)
+          string go_path = "generated_" + func_name + ".go";
+          ofstream go_os(go_path);
+          if (!go_os)
+            throw logic_error("failed to create Go file");
+          Compiler::gen_lattigo_code(func, go_os);
+          go_os.close();
+          cout << "Generated Lattigo code: " << go_path << endl;
+        } else if (backend == 2) {
+          // HEonGPU backend (CUDA)
+          string cu_path = "generated_" + func_name + ".cu";
+          ofstream cu_os(cu_path);
+          if (!cu_os)
+            throw logic_error("failed to create CUDA file");
+          Compiler::gen_heongpu_code(func, cu_os, scheme);
+          cu_os.close();
+          cout << "Generated HEonGPU code: " << cu_path << endl;
+        }
         /************/elapsed = chrono::high_resolution_clock::now() - t;
         cout<<"Compile time : \n";
         cout << elapsed.count() << " ms\n";

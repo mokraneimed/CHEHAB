@@ -172,6 +172,13 @@ void gen_func_heongpu(
   os << "    std::cout << \"galois_keys_generation_time_(ms): \" << keys_elapsed << \"\\n\";\n";
   os << "    std::cout << \"total_execution_time_(ms): \" << (elapsed + keys_elapsed) << \"\\n\";\n";
 
+  if (scheme == 0) {
+      os << "    for (const auto& pair : encryptedOutputs) {\n";
+      os << "        int remaining_noise_budget = decryptor.remainder_noise_budget(pair.second);\n";
+      os << "        std::cout << \"Remaining_noise_budget: \" << remaining_noise_budget << \" \\n\" << std::flush;\n";
+      os << "    }\n";
+  }
+
   os << "    return 0;\n";
   os << "}\n";
 }

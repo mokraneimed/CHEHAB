@@ -134,6 +134,10 @@ int main(int argc, char **argv)
   }
   float w_keys = 1.0f - w_ops;
 
+int scheme = 0; // 0 = BFV, 1 = CKKS
+  if (argc > 11) scheme = stoi(argv[11]);
+
+
 
   std::string framework = "";
   if (argc > 11) framework = argv[11]; 
@@ -197,7 +201,7 @@ int main(int argc, char **argv)
         string cu_path = "generated_" + func_name + ".cu";
         ofstream cu_os(cu_path);
         if (!cu_os) throw logic_error("failed to create CUDA file");
-        Compiler::gen_heongpu_code(func, cu_os, 1);
+        Compiler::gen_heongpu_code(func, cu_os, scheme);
         cu_os.close();
         cout << "Generated HEonGPU code: " << cu_path << endl;
       }
@@ -247,7 +251,7 @@ int main(int argc, char **argv)
         string cu_path = "generated_" + func_name + ".cu";
         ofstream cu_os(cu_path);
         if (!cu_os) throw logic_error("failed to create CUDA file");
-        Compiler::gen_heongpu_code(func, cu_os, 1);
+        Compiler::gen_heongpu_code(func, cu_os, scheme);
         cu_os.close();
         cout << "Generated HEonGPU code: " << cu_path << endl;
       }

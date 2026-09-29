@@ -241,6 +241,10 @@ int main(int argc, char **argv)
   bool call_quantifier = true;
   if (argc > 5)
     call_quantifier = stoi(argv[5]);
+
+int scheme = 0; // 0 = BFV, 1 = CKKS
+  if (argc > 11) scheme = stoi(argv[11]);
+
   
   // Enable optimizations
   Compiler::enable_cse();
@@ -339,7 +343,7 @@ int main(int argc, char **argv)
     
       if (!cu_os) throw logic_error("failed to create CUDA file");
     
-      Compiler::gen_heongpu_code(func, cu_os, 1);
+      Compiler::gen_heongpu_code(func, cu_os, scheme);
     
       cu_os.close();
     
