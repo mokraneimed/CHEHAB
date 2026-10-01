@@ -39,5 +39,6 @@ add_subdirectory(benchmarks/poly_derivative)
 add_subdirectory(benchmarks/discrete_cosin_transform)
 add_subdirectory(benchmarks/conv2d)
 add_subdirectory(benchmarks/deep_network)
+add_subdirectory(benchmarks/dnn_tensor)
 
 add_subdirectory(RL/veclang_runner)

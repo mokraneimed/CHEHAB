@@ -209,14 +209,14 @@ Ruleset Ruleset::depth_ruleset(shared_ptr<ir::Func> func)
 
     {"fold-rotate", x << n << m, x << ((m + n))},
 
-    {"undo-nest-rotate-add-1", (x + (y << (n))) << m, (x << m) + (y << (n + m) )},
-    {"undo-nest-rotate-add-2", ((y << (n)) + x) << m, (y << (n + m)) + (x << m)},
-
-    {"undo-nest-rotate-sub-1", (x - (y << (n))) << m, (x << m) - (y << (n + m) )},
-    {"undo-nest-rotate-sub-2", ((y << (n)) - x) << m, (y << (n + m)) - (x << m)},
-
-    //{"undo-nest-rotate-mul-1", (x * (y << (n))) << m, (x << m) * (y << (n + m))},
-    {"undo-nest-rotate-mul-2", ((y << (n)) * x) << m, (y << (n + m)) * (x << m)}
+    // These rules undo the baby/giant rotation factorization and introduce
+    // non-grid rotation offsets, so they must remain disabled for BSGS.
+    // {"undo-nest-rotate-add-1", (x + (y << (n))) << m, (x << m) + (y << (n + m) )},
+    // {"undo-nest-rotate-add-2", ((y << (n)) + x) << m, (y << (n + m)) + (x << m)},
+    // {"undo-nest-rotate-sub-1", (x - (y << (n))) << m, (x << m) - (y << (n + m) )},
+    // {"undo-nest-rotate-sub-2", ((y << (n)) - x) << m, (y << (n + m)) - (x << m)},
+    // {"undo-nest-rotate-mul-1", (x * (y << (n))) << m, (x << m) * (y << (n + m))},
+    // {"undo-nest-rotate-mul-2", ((y << (n)) * x) << m, (y << (n + m)) * (x << m)}
   };
 
   vector<Rule> mul_rules{

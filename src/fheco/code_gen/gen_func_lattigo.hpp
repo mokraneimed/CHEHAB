@@ -98,8 +98,10 @@ void gen_main_go(
   const std::string &func_name,
   const std::unordered_set<int> &rotation_steps,
   std::ostream &os,
+  const std::shared_ptr<ir::Func> &func,
   const ckks::CKKSParams* ckks_params = nullptr,
-  const std::set<std::string> &cipher_input_labels = {});
+  const std::set<std::string> &cipher_input_labels = {},
+  std::size_t bootstrap_count = 0);
 
 /**
  * @brief Helper to generate cipher variable name
