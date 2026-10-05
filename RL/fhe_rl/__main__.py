@@ -2,7 +2,7 @@ import sys
 import argparse
 
 framework_parser = argparse.ArgumentParser(add_help=False)
-framework_parser.add_argument("--framework", choices=["constrained", "morl"], default="constrained", help='Framework to use (default: constrained)')
+framework_parser.add_argument("--framework", choices=["constrained", "morl", "baseline"], default="constrained", help='Framework to use (default: constrained)')
 args, _ = framework_parser.parse_known_args()
 try:
     import pytrs.config
@@ -21,6 +21,7 @@ from .config import (
     get_model_path, get_tokenizer_type, 
     print_config, set_framework
 )
+from .baseline.run_baseline import run_agent as run_agent_baseline
 
 
 def parse_arguments(args=None):
@@ -226,7 +227,12 @@ def main(args=None):
     parsed_args = parse_arguments(args)
     
     # Configure framework
-    framework_name = "mo" if parsed_args.framework == "morl" else parsed_args.framework
+    if parsed_args.framework == "morl":
+        framework_name = "mo"
+    elif parsed_args.framework == "baseline":
+        framework_name = "baseline"
+    else:
+        framework_name = parsed_args.framework
     set_framework(framework_name)
     
     # Show configuration if requested
@@ -324,6 +330,9 @@ def main(args=None):
             agent_zip = get_model_path("mo_agent_model")
             from .run_mo import run_agent_mo
             run_agent_mo(input_file, embeddings, agent_zip, output_file, w_ops=parsed_args.w_ops, w_keys=parsed_args.w_keys)
+        elif framework_name == "baseline":
+            agent_zip = get_model_path("agent_model")
+            run_agent_baseline(input_file, embeddings, agent_zip, output_file)
         else:
             agent_zip = get_model_path("agent_model")
             run_agent(input_file, embeddings, agent_zip, output_file, noise_budget=300)

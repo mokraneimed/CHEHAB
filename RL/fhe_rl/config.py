@@ -88,12 +88,16 @@ def set_framework(framework_name: str):
     """
     Set the framework to use for the RL agent.
     Updates COMPONENT_CONFIG based on the selected framework.
-    Supported frameworks: 'constrained', 'mo'
+    Supported frameworks: 'constrained', 'mo', 'baseline'
     """
     if framework_name == "mo":
         COMPONENT_CONFIG["env_class"] = "fhe_rl.env_mo.fheEnvMO"
         COMPONENT_CONFIG["policy_class"] = "fhe_rl.policy_mo.HierarchicalMaskablePolicyMO"
         COMPONENT_CONFIG["wrapper_class"] = None
+    elif framework_name == "baseline":
+        COMPONENT_CONFIG["env_class"] = "fhe_rl.baseline.env_baseline.fheEnv"
+        COMPONENT_CONFIG["policy_class"] = "fhe_rl.baseline.policy_baseline.HierarchicalMaskablePolicy"
+        COMPONENT_CONFIG["wrapper_class"] = "auto"
     elif framework_name == "constrained":
         COMPONENT_CONFIG["env_class"] = "fhe_rl.env.fheEnv"
         COMPONENT_CONFIG["policy_class"] = "fhe_rl.policy.HierarchicalMaskablePolicy"

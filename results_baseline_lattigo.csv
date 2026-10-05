@@ -1,0 +1,2 @@
+benchmark,add,sub,multiply_plain,rotate_rows,negate,multiply,Depth,Multiplicative Depth,compile_time (s),circuit_execution_time (s),galois_keys_generation_time (s),total_execution_time (s),rotation_keys_size (MB)
+tree_100-50_5_1,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A,N/A

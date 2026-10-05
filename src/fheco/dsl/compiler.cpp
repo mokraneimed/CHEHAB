@@ -795,7 +795,7 @@ void Compiler::call_rl_vectorizer(int vector_width, float w_ops, float w_keys, c
   cmd << "run "
       << "'" << expr_file.string() << "' "
       << "'" << vect_file.string() << "'";
-  if (w_ops >= 0.0f) {
+  if ((framework == "mo" || framework == "morl" || (framework.empty() && w_ops >= 0.0f)) && w_ops >= 0.0f) {
       cmd << " --w_ops " << w_ops;
   }
   std::cout << "Executing: " << cmd.str() << '\n';
