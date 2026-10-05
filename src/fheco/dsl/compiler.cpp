@@ -50,6 +50,10 @@ bool Compiler::scalar_vector_shape_ = true;
 
 bool Compiler::automatic_enc_params_enabled_ = false; // Or set to true if desired
 
+int Compiler::canonical_bsgs_base_ = 0;
+
+std::vector<std::vector<int>> Compiler::layer_diags_collector_;
+
 extern "C"
 {
   void modify_string(char *str, size_t len);
@@ -85,7 +89,8 @@ void Compiler::gen_he_code(
 /***********************************************************************/
 void Compiler::gen_lattigo_code(
   const std::shared_ptr<ir::Func> &func, std::ostream &go_os,
-  size_t rotation_keys_threshold, bool insert_rescale_ops)
+  size_t rotation_keys_threshold, bool insert_rescale_ops,
+  const ckks::CKKSParams *custom_params)
 {
 #ifdef FHECO_LOGGING
   clog << "\nLattigo code generation (CKKS)\n";
@@ -163,9 +168,14 @@ void Compiler::gen_lattigo_code(
   }
 #endif
 
-  // Create CKKS params based on multiplicative depth
+  // Create CKKS params based on multiplicative depth or custom params
   ckks::CKKSParams ckks_params;
-  if (needs_bootstrap)
+  if (custom_params)
+  {
+    ckks_params = *custom_params;
+    needs_bootstrap = ckks_params.enable_bootstrap;
+  }
+  else if (needs_bootstrap)
   {
     ckks_params = ckks::CKKSParamSelector::default_params_with_bootstrap(mul_depth);
     ckks_params.enable_bootstrap = true;
@@ -203,6 +213,14 @@ void Compiler::gen_lattigo_code(
 
   // Generate Lattigo Go code with computed CKKS params
   code_gen::lattigo::gen_func_lattigo(func, rotation_steps_keys, go_os, func->name(), &ckks_params);
+}
+
+void Compiler::gen_lattigo_code(
+  const std::shared_ptr<ir::Func> &func, std::ostream &go_os,
+  const ckks::CKKSParams &custom_params,
+  std::size_t rotation_keys_threshold, bool insert_rescale)
+{
+  gen_lattigo_code(func, go_os, rotation_keys_threshold, insert_rescale, &custom_params);
 }
 
 /***********************************************************************/
@@ -316,6 +334,47 @@ void Compiler::delete_func(const string &name)
   if (active_func()->name() == name)
     active_func_it_ = funcs_table_.end();
   funcs_table_.erase(name);
+}
+/*********************************************************************/
+void Compiler::clear_all_funcs()
+{
+  funcs_table_.clear();
+  active_func_it_ = funcs_table_.cend();
+}
+/*********************************************************************/
+void Compiler::register_layer_diags(const std::vector<int> &diags)
+{
+  layer_diags_collector_.push_back(diags);
+}
+/*********************************************************************/
+int Compiler::compute_global_bsgs_base()
+{
+  if (layer_diags_collector_.empty())
+    return 1;
+
+  const int slots = static_cast<int>(active_func()->slot_count());
+  int best_n1 = 1;
+  size_t fewest_keys = std::numeric_limits<size_t>::max();
+  for (int n1 = 1; n1 <= std::min(slots, 256); n1 <<= 1)
+  {
+    std::unordered_set<int> keys;
+    for (const auto &layer : layer_diags_collector_)
+      for (int diagonal : layer)
+      {
+        const int rotation = ((diagonal % slots) + slots) % slots;
+        const int baby = n1 > 1 ? rotation & (n1 - 1) : 0;
+        const int giant = n1 > 1 ? ((rotation / n1) * n1) & (slots - 1) : rotation;
+        if (baby) keys.insert(baby);
+        if (giant) keys.insert(giant);
+      }
+    if (keys.size() < fewest_keys) { fewest_keys = keys.size(); best_n1 = n1; }
+  }
+  return best_n1;
+}
+/*********************************************************************/
+void Compiler::clear_diag_collector()
+{
+  layer_diags_collector_.clear();
 }
 /*********************************************************************/
 ostream &operator<<(ostream &os, Compiler::Ruleset ruleset)

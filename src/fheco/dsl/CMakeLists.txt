@@ -6,6 +6,8 @@ set(FHECO_SOURCE_FILES ${FHECO_SOURCE_FILES}
     ${CMAKE_CURRENT_LIST_DIR}/ops_overloads.cpp
     ${CMAKE_CURRENT_LIST_DIR}/plaintext.cpp
     ${CMAKE_CURRENT_LIST_DIR}/compiler_simplification.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/plaintext_matrix.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/matmul.cpp
 )
 
 install(
@@ -17,6 +19,9 @@ install(
         ${CMAKE_CURRENT_LIST_DIR}/ops_overloads.hpp
         ${CMAKE_CURRENT_LIST_DIR}/plaintext.hpp
         ${CMAKE_CURRENT_LIST_DIR}/compiler_simplification.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/tensor.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/plaintext_matrix.hpp
+        ${CMAKE_CURRENT_LIST_DIR}/matmul.hpp
     DESTINATION
         ${FHECO_INCLUDES_INSTALL_DIR}/dsl
 )

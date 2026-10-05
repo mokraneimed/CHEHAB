@@ -1,0 +1,3 @@
+file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/he)
+add_executable(dnn_tensor_benchmarks_runner dnn_tensor_benchmarks.cpp)
+target_link_libraries(dnn_tensor_benchmarks_runner PRIVATE fheco)

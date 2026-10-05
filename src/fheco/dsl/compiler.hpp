@@ -26,6 +26,8 @@ using std::string;
 using std::vector;
 namespace fheco
 {
+namespace ckks { struct CKKSParams; }
+
 class Compiler
 {
 public:
@@ -74,6 +76,13 @@ public:
   static void gen_lattigo_code(
     const std::shared_ptr<ir::Func> &func, std::ostream &go_os,
     std::size_t rotation_keys_threshold = std::numeric_limits<std::size_t>::max(),
+    bool insert_rescale = true,
+    const ckks::CKKSParams *custom_params = nullptr);
+
+  static void gen_lattigo_code(
+    const std::shared_ptr<ir::Func> &func, std::ostream &go_os,
+    const ckks::CKKSParams &custom_params,
+    std::size_t rotation_keys_threshold = std::numeric_limits<std::size_t>::max(),
     bool insert_rescale = true);
 
   // Generate HEonGPU (CUDA) code for BFV or CKKS
@@ -100,6 +109,15 @@ public:
   static const std::shared_ptr<ir::Func> &get_func(const std::string &name);
 
   static void delete_func(const std::string &name);
+
+  // DNN tensor lowering registers its diagonal sets here so a two-pass build
+  // can choose one BSGS base that minimizes rotation keys across all layers.
+  static inline void set_canonical_bsgs_base(int n1) { canonical_bsgs_base_ = n1; }
+  static inline int canonical_bsgs_base() { return canonical_bsgs_base_; }
+  static void clear_all_funcs();
+  static void register_layer_diags(const std::vector<int> &diags);
+  static int compute_global_bsgs_base();
+  static void clear_diag_collector();
 
   static inline bool cse_enabled() { return cse_enabled_; }
 
@@ -149,6 +167,9 @@ private:
   static bool scalar_vector_shape_;
 
   static bool automatic_enc_params_enabled_ ;
+
+  static int canonical_bsgs_base_;
+  static std::vector<std::vector<int>> layer_diags_collector_;
 };
 
 std::ostream &operator<<(std::ostream &os, Compiler::Ruleset ruleset);

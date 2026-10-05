@@ -51,11 +51,30 @@ constexpr std::string_view go_file_header{
 R"(package main
 
 import (
+	"flag"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
 	"github.com/tuneinsight/lattigo/v5/he/hefloat"
+)
+
+)"};
+
+// Go file header with ring import (for RingType or Ternary without bootstrapping)
+constexpr std::string_view go_file_header_ring{
+R"(package main
+
+import (
+	"flag"
+	"fmt"
+	"math"
+	"time"
+
+	"github.com/tuneinsight/lattigo/v5/core/rlwe"
+	"github.com/tuneinsight/lattigo/v5/he/hefloat"
+	"github.com/tuneinsight/lattigo/v5/ring"
 )
 
 )"};
@@ -65,7 +84,9 @@ constexpr std::string_view go_file_header_bootstrap{
 R"(package main
 
 import (
+	"flag"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
