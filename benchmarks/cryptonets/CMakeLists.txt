@@ -1,5 +1,6 @@
 
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/cryptonets/he)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/cryptonets/heongpu)
 add_executable(cryptonets cryptonets.cpp)
 target_link_libraries(cryptonets PRIVATE fheco)
 
@@ -50,11 +51,11 @@ add_custom_target(copy_my_file_4cryptonets ALL
     DEPENDS ${SOURCE_FILE}
     COMMENT "Copying ${SOURCE_FILE_4} to ${DESTINATION_FILE_4}"
 )
-set(SOURCE_FILE_COMPILE_CUDA_cryptonets ${CMAKE_SOURCE_DIR}/benchmarks/cryptonets/compile_cuda.py)
-set(DESTINATION_FILE_COMPILE_CUDA_cryptonets ${CMAKE_SOURCE_DIR}/build/benchmarks/cryptonets/compile_cuda.py)
-add_custom_target(copy_compile_cuda_cryptonets ALL 
-    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_COMPILE_CUDA_cryptonets} ${DESTINATION_FILE_COMPILE_CUDA_cryptonets}
-    DEPENDS ${SOURCE_FILE_COMPILE_CUDA_cryptonets}
-    COMMENT "Copying ${SOURCE_FILE_COMPILE_CUDA_cryptonets} to ${DESTINATION_FILE_COMPILE_CUDA_cryptonets}"
-)
 
+set(SOURCE_FILE_HEONGPU_CMAKE_cryptonets ${CMAKE_SOURCE_DIR}/benchmarks/cryptonets/heongpu/CMakeLists.txt)
+set(DESTINATION_FILE_HEONGPU_CMAKE_cryptonets ${CMAKE_SOURCE_DIR}/build/benchmarks/cryptonets/heongpu/CMakeLists.txt)
+add_custom_target(copy_heongpu_cmake_cryptonets ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_HEONGPU_CMAKE_cryptonets} ${DESTINATION_FILE_HEONGPU_CMAKE_cryptonets}
+    DEPENDS ${SOURCE_FILE_HEONGPU_CMAKE_cryptonets}
+    COMMENT "Copying ${SOURCE_FILE_HEONGPU_CMAKE_cryptonets} to ${DESTINATION_FILE_HEONGPU_CMAKE_cryptonets}"
+)

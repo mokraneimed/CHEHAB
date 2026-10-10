@@ -1,5 +1,6 @@
 
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/polynomials_coyote/he)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/polynomials_coyote/heongpu)
 add_executable(polynomials_coyote polynomials_coyote.cpp)
 target_link_libraries(polynomials_coyote PRIVATE fheco)
 
@@ -48,11 +49,11 @@ set(TREES_DEST_DIR ${CMAKE_SOURCE_DIR}/build/benchmarks/polynomials_coyote/)  # 
 # Copy the repository with all its files
 file(COPY ${TREES_SOURCE_DIR} DESTINATION ${TREES_DEST_DIR})
 
-set(SOURCE_FILE_COMPILE_CUDA_polynomials_coyote ${CMAKE_SOURCE_DIR}/benchmarks/polynomials_coyote/compile_cuda.py)
-set(DESTINATION_FILE_COMPILE_CUDA_polynomials_coyote ${CMAKE_SOURCE_DIR}/build/benchmarks/polynomials_coyote/compile_cuda.py)
-add_custom_target(copy_compile_cuda_polynomials_coyote ALL 
-    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_COMPILE_CUDA_polynomials_coyote} ${DESTINATION_FILE_COMPILE_CUDA_polynomials_coyote}
-    DEPENDS ${SOURCE_FILE_COMPILE_CUDA_polynomials_coyote}
-    COMMENT "Copying ${SOURCE_FILE_COMPILE_CUDA_polynomials_coyote} to ${DESTINATION_FILE_COMPILE_CUDA_polynomials_coyote}"
-)
 
+set(SOURCE_FILE_HEONGPU_CMAKE_polynomials_coyote ${CMAKE_SOURCE_DIR}/benchmarks/polynomials_coyote/heongpu/CMakeLists.txt)
+set(DESTINATION_FILE_HEONGPU_CMAKE_polynomials_coyote ${CMAKE_SOURCE_DIR}/build/benchmarks/polynomials_coyote/heongpu/CMakeLists.txt)
+add_custom_target(copy_heongpu_cmake_polynomials_coyote ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_HEONGPU_CMAKE_polynomials_coyote} ${DESTINATION_FILE_HEONGPU_CMAKE_polynomials_coyote}
+    DEPENDS ${SOURCE_FILE_HEONGPU_CMAKE_polynomials_coyote}
+    COMMENT "Copying ${SOURCE_FILE_HEONGPU_CMAKE_polynomials_coyote} to ${DESTINATION_FILE_HEONGPU_CMAKE_polynomials_coyote}"
+)

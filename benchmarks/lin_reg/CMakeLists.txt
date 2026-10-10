@@ -1,5 +1,6 @@
 
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/lin_reg/he)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/lin_reg/heongpu)
 add_executable(lin_reg lin_reg.cpp)
 target_link_libraries(lin_reg PRIVATE fheco)
 
@@ -46,11 +47,11 @@ add_custom_target(copy_my_file_4lin_reg ALL
     DEPENDS ${SOURCE_FILE}
     COMMENT "Copying ${SOURCE_FILE_4} to ${DESTINATION_FILE_4}"
 )
-set(SOURCE_FILE_COMPILE_CUDA_lin_reg ${CMAKE_SOURCE_DIR}/benchmarks/lin_reg/compile_cuda.py)
-set(DESTINATION_FILE_COMPILE_CUDA_lin_reg ${CMAKE_SOURCE_DIR}/build/benchmarks/lin_reg/compile_cuda.py)
-add_custom_target(copy_compile_cuda_lin_reg ALL 
-    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_COMPILE_CUDA_lin_reg} ${DESTINATION_FILE_COMPILE_CUDA_lin_reg}
-    DEPENDS ${SOURCE_FILE_COMPILE_CUDA_lin_reg}
-    COMMENT "Copying ${SOURCE_FILE_COMPILE_CUDA_lin_reg} to ${DESTINATION_FILE_COMPILE_CUDA_lin_reg}"
-)
 
+set(SOURCE_FILE_HEONGPU_CMAKE_lin_reg ${CMAKE_SOURCE_DIR}/benchmarks/lin_reg/heongpu/CMakeLists.txt)
+set(DESTINATION_FILE_HEONGPU_CMAKE_lin_reg ${CMAKE_SOURCE_DIR}/build/benchmarks/lin_reg/heongpu/CMakeLists.txt)
+add_custom_target(copy_heongpu_cmake_lin_reg ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_HEONGPU_CMAKE_lin_reg} ${DESTINATION_FILE_HEONGPU_CMAKE_lin_reg}
+    DEPENDS ${SOURCE_FILE_HEONGPU_CMAKE_lin_reg}
+    COMMENT "Copying ${SOURCE_FILE_HEONGPU_CMAKE_lin_reg} to ${DESTINATION_FILE_HEONGPU_CMAKE_lin_reg}"
+)

@@ -1,5 +1,6 @@
 
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/discrete_cosin_transform/he)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/discrete_cosin_transform/heongpu)
 add_executable(discrete_cosin_transform discrete_cosin_transform.cpp)
 target_link_libraries(discrete_cosin_transform PRIVATE fheco)
  
@@ -47,11 +48,11 @@ add_custom_target(copy_my_file_4discrete_cosin_transform ALL
     DEPENDS ${SOURCE_FILE}
     COMMENT "Copying ${SOURCE_FILE_4} to ${DESTINATION_FILE_4}"
 )
-set(SOURCE_FILE_COMPILE_CUDA_discrete_cosin_transform ${CMAKE_SOURCE_DIR}/benchmarks/discrete_cosin_transform/compile_cuda.py)
-set(DESTINATION_FILE_COMPILE_CUDA_discrete_cosin_transform ${CMAKE_SOURCE_DIR}/build/benchmarks/discrete_cosin_transform/compile_cuda.py)
-add_custom_target(copy_compile_cuda_discrete_cosin_transform ALL 
-    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_COMPILE_CUDA_discrete_cosin_transform} ${DESTINATION_FILE_COMPILE_CUDA_discrete_cosin_transform}
-    DEPENDS ${SOURCE_FILE_COMPILE_CUDA_discrete_cosin_transform}
-    COMMENT "Copying ${SOURCE_FILE_COMPILE_CUDA_discrete_cosin_transform} to ${DESTINATION_FILE_COMPILE_CUDA_discrete_cosin_transform}"
-)
 
+set(SOURCE_FILE_HEONGPU_CMAKE_discrete_cosin_transform ${CMAKE_SOURCE_DIR}/benchmarks/discrete_cosin_transform/heongpu/CMakeLists.txt)
+set(DESTINATION_FILE_HEONGPU_CMAKE_discrete_cosin_transform ${CMAKE_SOURCE_DIR}/build/benchmarks/discrete_cosin_transform/heongpu/CMakeLists.txt)
+add_custom_target(copy_heongpu_cmake_discrete_cosin_transform ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_HEONGPU_CMAKE_discrete_cosin_transform} ${DESTINATION_FILE_HEONGPU_CMAKE_discrete_cosin_transform}
+    DEPENDS ${SOURCE_FILE_HEONGPU_CMAKE_discrete_cosin_transform}
+    COMMENT "Copying ${SOURCE_FILE_HEONGPU_CMAKE_discrete_cosin_transform} to ${DESTINATION_FILE_HEONGPU_CMAKE_discrete_cosin_transform}"
+)

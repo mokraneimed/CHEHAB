@@ -51,9 +51,7 @@ constexpr std::string_view go_file_header{
 R"(package main
 
 import (
-	"flag"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
@@ -67,9 +65,7 @@ constexpr std::string_view go_file_header_ring{
 R"(package main
 
 import (
-	"flag"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
@@ -84,9 +80,7 @@ constexpr std::string_view go_file_header_bootstrap{
 R"(package main
 
 import (
-	"flag"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
@@ -213,4 +207,3 @@ inline std::string get_plain_var(std::size_t id) {
 }
 
 } // namespace fheco::code_gen::lattigo
-

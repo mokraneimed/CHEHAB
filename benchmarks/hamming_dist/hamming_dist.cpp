@@ -148,7 +148,7 @@ if (cse)
       go_os.close();
       cout << "Generated Lattigo code: " << go_path << endl;
     } else if (backend == 2) {
-      string cu_path = "generated_" + func_name + ".cu";
+      string cu_path = "heongpu/generated_" + func_name + ".cu";
       ofstream cu_os(cu_path);
       if (!cu_os) throw logic_error("failed to create CUDA file");
       Compiler::gen_heongpu_code(func, cu_os, scheme);
@@ -195,7 +195,7 @@ if (cse)
       go_os.close();
       cout << "Generated Lattigo code: " << go_path << endl;
     } else if (backend == 2) {
-      string cu_path = "generated_" + func_name + ".cu";
+      string cu_path = "heongpu/generated_" + func_name + ".cu";
       ofstream cu_os(cu_path);
       if (!cu_os) throw logic_error("failed to create CUDA file");
       Compiler::gen_heongpu_code(func, cu_os, scheme);

@@ -88,7 +88,7 @@ void gen_func_heongpu(
   // Generate main()
   os << "int main(int argc, char **argv) {\n";
   if (scheme == 0) { // BFV
-    if (bfv_params) {
+    if (bfv_params && !bfv_params->coeff_mod_bit_sizes().empty()) {
         os << "    int poly_modulus_degree = " << bfv_params->poly_mod_degree() << ";\n";
         os << "    std::vector<int> q_bits = {";
         auto sizes = bfv_params->coeff_mod_bit_sizes();

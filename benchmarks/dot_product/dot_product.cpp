@@ -153,7 +153,7 @@ int scheme = 0; // 0 = BFV, 1 = CKKS
       cout << "Generated Lattigo code: " << go_path << endl;
     } else if (backend == 2) {
       // HEonGPU backend (CUDA)
-      string cu_path = "generated_" + func_name + ".cu";
+      string cu_path = "heongpu/generated_" + func_name + ".cu";
       ofstream cu_os(cu_path);
       if (!cu_os)
         throw logic_error("failed to create CUDA file");
@@ -207,7 +207,7 @@ int scheme = 0; // 0 = BFV, 1 = CKKS
       cout << "Generated Lattigo code: " << go_path << endl;
     } else if (backend == 2) {
       // HEonGPU backend (CUDA)
-      string cu_path = "generated_" + func_name + ".cu";
+      string cu_path = "heongpu/generated_" + func_name + ".cu";
       ofstream cu_os(cu_path);
       if (!cu_os)
         throw logic_error("failed to create CUDA file");

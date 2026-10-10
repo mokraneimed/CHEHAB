@@ -337,7 +337,7 @@ int scheme = 0; // 0 = BFV, 1 = CKKS
     
     } else if (backend == 2) {
     
-      string cu_path = "generated_" + func_name + ".cu";
+      string cu_path = "heongpu/generated_" + func_name + ".cu";
     
       ofstream cu_os(cu_path);
     

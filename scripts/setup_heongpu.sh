@@ -1,64 +1,103 @@
 #!/bin/bash
 # ============================================================================
-#  HEonGPU local installation script for HPC
-#  Installs HEonGPU into $HOME/local/heongpu (user-local, no root needed)
+#  HEonGPU local installation script (conda-based, no HPC modules)
+#  Uses nvcc / CUDA headers / GMP / NTL / host compiler from a conda env.
+#  Installs HEonGPU into $HOME/local/heongpu-conda (user-local, no root).
 # ============================================================================
 set -euo pipefail
 
-INSTALL_PREFIX="${HOME}/local/heongpu"
+ENV_NAME="${ENV_NAME:-chehabEnv}"
+INSTALL_PREFIX="${INSTALL_PREFIX:-${HOME}/local/heongpu-conda}"
 BUILD_DIR="/tmp/${USER}_heongpu_build"
 HEONGPU_REPO="https://github.com/Alisah-Ozcan/HEonGPU.git"
 HEONGPU_BRANCH="main"
+CUDA_ARCH="${CUDA_ARCH:-80}"      # 80 = A100; override: CUDA_ARCH=90 ./script.sh
+JOBS="${JOBS:-$(nproc)}"
 
-echo "═══════════════════════════════════════════════════════════"
-echo "  HEonGPU Installation Script"
+echo "==========================================================="
+echo "  HEonGPU Installation Script (conda)"
+echo "  Conda env:      ${ENV_NAME}"
 echo "  Install prefix: ${INSTALL_PREFIX}"
-echo "═══════════════════════════════════════════════════════════"
+echo "==========================================================="
 
-module load cuda/12.2.0 2>/dev/null || module load cuda 2>/dev/null || {
-    echo "WARNING: Could not load CUDA module. Checking if nvcc is available..."
-    if ! command -v nvcc &>/dev/null; then
-        echo "ERROR: CUDA toolkit not found. Please load the CUDA module manually."
-        echo "  Try: module avail cuda"
+# ---------------------------------------------------------------------------
+# 1. Activate the conda env (no `module load` anywhere)
+# ---------------------------------------------------------------------------
+if [ "${CONDA_DEFAULT_ENV:-}" != "${ENV_NAME}" ]; then
+    if ! command -v conda &>/dev/null; then
+        echo "ERROR: conda not found in PATH. Activate it first (or load your conda module)."
         exit 1
     fi
-}
-
-module load cmake 2>/dev/null || true
-module load gcc 2>/dev/null || true
-# Do NOT load gmp/ntl modules -- we use spack GMP 6.3.0 + local NTL to avoid version conflicts
-
-# Build NTL locally using spack GMP 6.3.0 (headers + lib from same source)
-GMP_PREFIX="/share/apps/NYUAD6/spack/spack-0.23.0/opt/spack/linux-rocky8-zen/gcc-8.5.0/gmp-6.3.0-zims4vx7m6ggtn3ava2r2ksidghaly5v"
-echo "Using GMP from: ${GMP_PREFIX}"
-export LD_LIBRARY_PATH="${GMP_PREFIX}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-export LIBRARY_PATH="${GMP_PREFIX}/lib${LIBRARY_PATH:+:$LIBRARY_PATH}"
-
-if [ ! -d "${HOME}/local/ntl/include/NTL" ]; then
-    echo "Installing NTL locally..."
-    rm -rf "${HOME}/local/ntl"
-    NTL_BUILD="/tmp/${USER}_ntl_build"
-    rm -rf "$NTL_BUILD"
-    mkdir -p "$NTL_BUILD" && cd "$NTL_BUILD"
-    curl -L -o ntl.tar.gz https://libntl.org/ntl-11.5.1.tar.gz
-    tar xzf ntl.tar.gz && cd ntl-11.5.1/src
-    ./configure PREFIX="${HOME}/local/ntl" GMP_PREFIX="${GMP_PREFIX}" NTL_THREADS=on SHARED=on
-    make -j$(nproc)
-    make install
-    cd / && rm -rf "$NTL_BUILD"
-    echo "NTL installed at: ${HOME}/local/ntl"
-else
-    echo "NTL already installed at: ${HOME}/local/ntl"
+    set +u   # conda.sh / activate scripts are not nounset-safe
+    source "$(conda info --base)/etc/profile.d/conda.sh"
+    conda activate "${ENV_NAME}"
+    set -u
 fi
 
-export LD_LIBRARY_PATH="${HOME}/local/ntl/lib:${LD_LIBRARY_PATH}"
+: "${CONDA_PREFIX:?CONDA_PREFIX is not set - is the env activated?}"
+echo "CONDA_PREFIX: ${CONDA_PREFIX}"
+
+# Make sure the env wins over anything the HPC session may have loaded,
+# and drop variables that would drag in the system/module CUDA.
+export PATH="${CONDA_PREFIX}/bin:${PATH}"
+unset CUDA_HOME CUDA_PATH CUDA_ROOT CUDA_DIR CUDACXX CUDAHOSTCXX CPATH \
+      C_INCLUDE_PATH CPLUS_INCLUDE_PATH LIBRARY_PATH LD_LIBRARY_PATH 2>/dev/null || true
+
+# ---------------------------------------------------------------------------
+# 2. Locate everything inside the env and verify it is complete
+# ---------------------------------------------------------------------------
+NVCC="${CONDA_PREFIX}/bin/nvcc"
+HOST_CC="${CONDA_PREFIX}/bin/x86_64-conda-linux-gnu-gcc"
+HOST_CXX="${CONDA_PREFIX}/bin/x86_64-conda-linux-gnu-g++"
+
+# CUDA headers: conda puts them under targets/x86_64-linux/include
+CUDA_INC=""
+for c in "${CONDA_PREFIX}/targets/x86_64-linux/include" "${CONDA_PREFIX}/include"; do
+    if [ -f "${c}/cuda_runtime.h" ]; then CUDA_INC="${c}"; break; fi
+done
+
+# Thrust (shipped by cuda-cccl)
+THRUST_DIR=""
+for c in "${CUDA_INC}" "${CUDA_INC}/cccl" "${CONDA_PREFIX}/include" "${CONDA_PREFIX}/include/cccl"; do
+    if [ -n "${c}" ] && [ -d "${c}/thrust" ]; then THRUST_DIR="${c}"; break; fi
+done
+
+missing=()
+[ -x "${NVCC}" ]                          || missing+=("cuda-nvcc")
+[ -n "${CUDA_INC}" ]                      || missing+=("cuda-cudart-dev")
+[ -n "${THRUST_DIR}" ]                    || missing+=("cuda-cccl")
+[ -f "${CONDA_PREFIX}/include/gmp.h" ]    || missing+=("gmp")
+[ -f "${CONDA_PREFIX}/include/NTL/ZZ.h" ] || missing+=("ntl")
+[ -x "${HOST_CXX}" ]                      || missing+=("gxx_linux-64=12")
+
+if [ ${#missing[@]} -gt 0 ]; then
+    echo "ERROR: missing packages in env '${ENV_NAME}': ${missing[*]}"
+    echo ""
+    echo "Install them with (adjust the CUDA label/version to match your env):"
+    echo "  conda install -n ${ENV_NAME} -c \"nvidia/label/cuda-12.4.1\" \\"
+    echo "      cuda-nvcc=12.4 cuda-cudart-dev=12.4 cuda-cccl=12.4"
+    echo "  conda install -n ${ENV_NAME} -c conda-forge gmp ntl cmake \"gxx_linux-64=12\""
+    exit 1
+fi
+
+# Sanity: nvcc must be the conda one, not an HPC leftover
+if [ "$(command -v nvcc)" != "${NVCC}" ]; then
+    echo "ERROR: 'nvcc' resolves to $(command -v nvcc), expected ${NVCC}"
+    exit 1
+fi
 
 echo ""
-echo "CUDA version: $(nvcc --version | grep release)"
-echo "CMake version: $(cmake --version | head -1)"
-echo "GCC version: $(g++ --version | head -1)"
+echo "nvcc:        $(nvcc --version | grep release)"
+echo "CMake:       $(cmake --version | head -1)"
+echo "Host g++:    $(${HOST_CXX} --version | head -1)"
+echo "CUDA headers: ${CUDA_INC}"
+echo "Thrust dir:   ${THRUST_DIR}"
+echo "CUDA arch:    ${CUDA_ARCH}"
 echo ""
 
+# ---------------------------------------------------------------------------
+# 3. Clone
+# ---------------------------------------------------------------------------
 rm -rf "${BUILD_DIR}"
 mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
@@ -67,45 +106,46 @@ echo "Cloning HEonGPU..."
 git clone --depth 1 --branch "${HEONGPU_BRANCH}" "${HEONGPU_REPO}" heongpu
 cd heongpu
 
-CUDA_ROOT=$(dirname $(dirname $(which nvcc)))
-THRUST_DIR="${CUDA_ROOT}/include"
-if [ ! -d "${THRUST_DIR}/thrust" ]; then
-    # Try alternate locations
-    for candidate in /share/apps/NYUAD5/cuda/*/include; do
-        if [ -d "${candidate}/thrust" ]; then
-            THRUST_DIR="${candidate}"
-            break
-        fi
-    done
-fi
-echo "CUDA root: ${CUDA_ROOT}"
-echo "Thrust dir: ${THRUST_DIR}"
-
+# ---------------------------------------------------------------------------
+# 4. Configure
+# ---------------------------------------------------------------------------
 echo ""
 echo "Configuring HEonGPU..."
 cmake -S . -B build \
     -DCMAKE_INSTALL_PREFIX="${INSTALL_PREFIX}" \
+    -DCMAKE_PREFIX_PATH="${CONDA_PREFIX}" \
     -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_CUDA_ARCHITECTURES="70" \
+    -DCMAKE_C_COMPILER="${HOST_CC}" \
+    -DCMAKE_CXX_COMPILER="${HOST_CXX}" \
+    -DCMAKE_CUDA_COMPILER="${NVCC}" \
+    -DCMAKE_CUDA_HOST_COMPILER="${HOST_CXX}" \
+    -DCUDAToolkit_ROOT="${CONDA_PREFIX}" \
+    -DCMAKE_CUDA_ARCHITECTURES="${CUDA_ARCH}" \
     -DTHRUST_INCLUDE_DIR="${THRUST_DIR}" \
-    -DGMP_ROOT="${GMP_PREFIX}" \
-    -DGMP_DIR="${GMP_PREFIX}" \
-    -DGMP_INCLUDE_DIR="${GMP_PREFIX}/include" \
-    -DGMP_LIBRARIES="${GMP_PREFIX}/lib/libgmp.so" \
-    -DNTL_ROOT="${HOME}/local/ntl" \
-    -DNTL_DIR="${HOME}/local/ntl" \
-    -DNTL_INCLUDE_DIR="${HOME}/local/ntl/include" \
-    -DNTL_LIBRARIES="${HOME}/local/ntl/lib/libntl.so" \
-    -DCMAKE_CXX_FLAGS="-I${HOME}/local/ntl/include -I${GMP_PREFIX}/include" \
-    -DCMAKE_CUDA_FLAGS="-I${HOME}/local/ntl/include -I${GMP_PREFIX}/include" \
-    -DCMAKE_EXE_LINKER_FLAGS="-L${HOME}/local/ntl/lib -L${GMP_PREFIX}/lib" \
-    -DCMAKE_SHARED_LINKER_FLAGS="-L${HOME}/local/ntl/lib -L${GMP_PREFIX}/lib" \
+    -DGMP_ROOT="${CONDA_PREFIX}" \
+    -DGMP_DIR="${CONDA_PREFIX}" \
+    -DGMP_INCLUDE_DIR="${CONDA_PREFIX}/include" \
+    -DGMP_LIBRARIES="${CONDA_PREFIX}/lib/libgmp.so" \
+    -DNTL_ROOT="${CONDA_PREFIX}" \
+    -DNTL_DIR="${CONDA_PREFIX}" \
+    -DNTL_INCLUDE_DIR="${CONDA_PREFIX}/include" \
+    -DNTL_LIBRARIES="${CONDA_PREFIX}/lib/libntl.so" \
+    -DCMAKE_CXX_FLAGS="-I${CONDA_PREFIX}/include" \
+    -DCMAKE_CUDA_FLAGS="-I${CONDA_PREFIX}/include -I${CUDA_INC}" \
+    -DCMAKE_EXE_LINKER_FLAGS="-L${CONDA_PREFIX}/lib" \
+    -DCMAKE_SHARED_LINKER_FLAGS="-L${CONDA_PREFIX}/lib" \
+    -DCMAKE_BUILD_RPATH="${CONDA_PREFIX}/lib" \
+    -DCMAKE_INSTALL_RPATH="${CONDA_PREFIX}/lib;${INSTALL_PREFIX}/lib" \
+    -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=ON \
     -DHEONGPU_BUILD_EXAMPLES=OFF \
     -DHEONGPU_BUILD_TESTS=OFF
 
+# ---------------------------------------------------------------------------
+# 5. Build + install
+# ---------------------------------------------------------------------------
 echo ""
-echo "Building HEonGPU (this may take 10-20 minutes)..."
-cmake --build build -j$(nproc)
+echo "Building HEonGPU with ${JOBS} jobs (this may take 10-20 minutes)..."
+cmake --build build -j"${JOBS}"
 
 echo ""
 echo "Installing to ${INSTALL_PREFIX}..."
@@ -113,13 +153,15 @@ cmake --install build
 
 echo ""
 echo "Cleaning up build directory..."
+cd /
 rm -rf "${BUILD_DIR}"
 
 echo ""
-echo "═══════════════════════════════════════════════════════════"
+echo "==========================================================="
 echo "  HEonGPU installed successfully!"
 echo "  Location: ${INSTALL_PREFIX}"
 echo ""
-echo "  To use with CMake, add:"
-echo "    -DCMAKE_PREFIX_PATH=${INSTALL_PREFIX}"
-echo "═══════════════════════════════════════════════════════════"
+echo "  To use with CMake (inside the '${ENV_NAME}' env), add:"
+echo "    -DCMAKE_PREFIX_PATH=\"${INSTALL_PREFIX};\${CONDA_PREFIX}\""
+echo "    -DCMAKE_CUDA_COMPILER=\${CONDA_PREFIX}/bin/nvcc"
+echo "==========================================================="

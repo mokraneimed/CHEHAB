@@ -20,181 +20,6 @@ using namespace std;
 namespace fheco::code_gen::lattigo
 {
 
-namespace
-{
-
-string reference_name(size_t term_id)
-{
-  return "ref_" + to_string(term_id);
-}
-
-bool can_generate_primitive_reference(const shared_ptr<ir::Func> &func)
-{
-  unordered_set<size_t> supported;
-  for (const auto &input : func->data_flow().inputs_info())
-    if (input.first->type() == ir::Term::Type::cipher)
-      supported.insert(input.first->id());
-  for (const auto &constant : func->data_flow().constants_info())
-    supported.insert(constant.first->id());
-
-  for (const auto *term : func->get_top_sorted_terms())
-  {
-    if (!term->is_operation())
-      continue;
-
-    const auto type = term->op_code().type();
-    const auto required_operands = type == ir::OpCode::Type::add ||
-      type == ir::OpCode::Type::sub || type == ir::OpCode::Type::mul ? 2 : 1;
-    if (term->operands().size() < required_operands)
-      return false;
-    for (size_t index = 0; index < required_operands; ++index)
-      if (!supported.count(term->operands()[index]->id()))
-        return false;
-
-    switch (type)
-    {
-      case ir::OpCode::Type::encrypt:
-      case ir::OpCode::Type::add:
-      case ir::OpCode::Type::sub:
-      case ir::OpCode::Type::negate:
-      case ir::OpCode::Type::rotate:
-      case ir::OpCode::Type::square:
-      case ir::OpCode::Type::mul:
-      case ir::OpCode::Type::mod_switch:
-      case ir::OpCode::Type::relin:
-      case ir::OpCode::Type::SumVec:
-      case ir::OpCode::Type::rescale:
-      case ir::OpCode::Type::bootstrap:
-        supported.insert(term->id());
-        break;
-      default:
-        return false;
-    }
-  }
-
-  for (const auto &output : func->data_flow().outputs_info())
-    if (output.first->type() != ir::Term::Type::cipher || !supported.count(output.first->id()))
-      return false;
-  return true;
-}
-
-void gen_primitive_reference_go(const shared_ptr<ir::Func> &func, ostream &os)
-{
-  unordered_map<size_t, string> references;
-  for (const auto &input : func->data_flow().inputs_info())
-  {
-    if (input.first->type() != ir::Term::Type::cipher)
-      continue;
-    const auto id = input.first->id();
-    const auto ref = reference_name(id);
-    references.emplace(id, ref);
-    os << "\t" << ref << " := append([]float64(nil), values...)\n";
-  }
-
-  for (const auto &constant : func->data_flow().constants_info())
-  {
-    const auto id = constant.first->id();
-    const auto ref = reference_name(id);
-    references.emplace(id, ref);
-    os << "\t" << ref << " := make([]float64, len(values))\n";
-    if (constant.second.is_scalar_)
-    {
-      os << "\tfor i := range " << ref << " { " << ref << "[i] = "
-         << constant.second.val_[0] << " }\n";
-    }
-    else
-    {
-      const auto &vec = constant.second.val_;
-      size_t nz = 0;
-      for (double v : vec)
-      {
-        if (v != 0.0) ++nz;
-      }
-      if (nz * 4 < vec.size())
-      {
-        for (size_t index = 0; index < vec.size(); ++index)
-        {
-          if (vec[index] != 0.0)
-            os << "\t" << ref << "[" << index << "] = " << vec[index] << "\n";
-        }
-      }
-      else
-      {
-        os << "\tcopy(" << ref << ", []float64{";
-        for (size_t index = 0; index < constant.second.val_.size(); ++index)
-        {
-          if (index) os << ", ";
-          os << constant.second.val_[index];
-        }
-        os << "})\n";
-      }
-    }
-  }
-
-  for (const auto *term : func->get_top_sorted_terms())
-  {
-    if (!term->is_operation())
-      continue;
-
-    const auto ref = reference_name(term->id());
-    const auto operand = references.at(term->operands()[0]->id());
-    references.emplace(term->id(), ref);
-    const auto type = term->op_code().type();
-    if (type == ir::OpCode::Type::encrypt || type == ir::OpCode::Type::mod_switch ||
-        type == ir::OpCode::Type::relin || type == ir::OpCode::Type::rescale ||
-        type == ir::OpCode::Type::bootstrap)
-    {
-      os << "\t" << ref << " := " << operand << "\n";
-    }
-    else if (type == ir::OpCode::Type::rotate)
-    {
-      os << "\t" << ref << " := make([]float64, len(" << operand << "))\n";
-      os << "\tfor i := range " << ref << " { " << ref << "[i] = " << operand
-         << "[(i + " << term->op_code().steps() << " + len(" << operand << ")) % len(" << operand << ")] }\n";
-    }
-    else if (type == ir::OpCode::Type::SumVec)
-    {
-      os << "\t" << ref << " := append([]float64(nil), " << operand << "...)\n";
-      for (int step = term->op_code().size() / 2; step >= 1; step /= 2)
-      {
-        os << "\t{ next := make([]float64, len(" << ref << ")); for i := range next { next[i] = "
-           << ref << "[i] + " << ref << "[(i + " << step << ") % len(" << ref << ")] }; "
-           << ref << " = next }\n";
-      }
-    }
-    else
-    {
-      os << "\t" << ref << " := make([]float64, len(" << operand << "))\n";
-      if (type == ir::OpCode::Type::negate)
-      {
-        os << "\tfor i := range " << ref << " { " << ref << "[i] = -" << operand << "[i] }\n";
-      }
-      else if (type == ir::OpCode::Type::square)
-      {
-        os << "\tfor i := range " << ref << " { " << ref << "[i] = " << operand << "[i] * " << operand << "[i] }\n";
-      }
-      else
-      {
-        const auto operand2 = references.at(term->operands()[1]->id());
-        const char *op = type == ir::OpCode::Type::add ? "+" :
-          type == ir::OpCode::Type::sub ? "-" : "*";
-        os << "\tfor i := range " << ref << " { " << ref << "[i] = " << operand
-           << "[i] " << op << " " << operand2 << "[i] }\n";
-      }
-    }
-  }
-
-  os << "\texpectedOutputs := make(map[string][]float64)\n";
-  for (const auto &output : func->data_flow().outputs_info())
-  {
-    const auto &ref = references.at(output.first->id());
-    for (const auto &label : output.second.labels_)
-      os << "\texpectedOutputs[\"" << label << "\"] = " << ref << "\n";
-  }
-}
-
-} // namespace
-
 void gen_func_lattigo(
   const shared_ptr<ir::Func> &func,
   const unordered_set<int> &rotation_steps,
@@ -208,10 +33,6 @@ void gen_func_lattigo(
   if (ckks_params && ckks_params->enable_bootstrap)
   {
     os << go_file_header_bootstrap;
-  }
-  else if (ckks_params && (ckks_params->ring_type == ckks::RingType::ConjugateInvariant || ckks_params->hamming_weight == 8192))
-  {
-    os << go_file_header_ring;
   }
   else
   {
@@ -242,12 +63,8 @@ void gen_func_lattigo(
       cipher_input_labels.insert(input_info.second.label_);
   }
 
-  std::size_t bootstrap_count = 0;
-  for (auto term : func->get_top_sorted_terms())
-    bootstrap_count += term->is_operation() && term->op_code().type() == ir::OpCode::Type::bootstrap;
-
   // Generate main function with setup (pass CKKS params)
-  gen_main_go(func_name, rotation_steps, os, func, ckks_params, cipher_input_labels, bootstrap_count);
+  gen_main_go(func_name, rotation_steps, os, ckks_params, cipher_input_labels);
 }
 
 void gen_func_signature_go(const string &func_name, ostream &os)
@@ -316,7 +133,6 @@ void gen_const_terms_go(
     
   os << "\n\t// Encode constants\n";
   os << "\tslotCount := params.MaxSlots()\n";
-  os << "\t_ = slotCount\n";
   
   for (const auto &const_info : const_terms_info)
   {
@@ -343,34 +159,14 @@ void gen_const_terms_go(
     else
     {
       // Vector constant
-      const auto &vec = const_info.second.val_;
-      size_t nz = 0;
-      for (double v : vec)
-      {
-        if (v != 0.0) ++nz;
-      }
       os << "\t{\n";
-      if (nz * 4 < vec.size())
+      os << "\t\tvalues := []float64{";
+      for (size_t i = 0; i < const_info.second.val_.size(); ++i)
       {
-        os << "\t\tvalues := make([]float64, slotCount)\n";
-        for (size_t i = 0; i < vec.size(); ++i)
-        {
-          if (vec[i] != 0.0)
-          {
-            os << "\t\tvalues[" << i << "] = float64(" << vec[i] << ")\n";
-          }
-        }
+        if (i > 0) os << ", ";
+        os << "float64(" << const_info.second.val_[i] << ")";
       }
-      else
-      {
-        os << "\t\tvalues := []float64{";
-        for (size_t i = 0; i < const_info.second.val_.size(); ++i)
-        {
-          if (i > 0) os << ", ";
-          os << "float64(" << const_info.second.val_[i] << ")";
-        }
-        os << "}\n";
-      }
+      os << "}\n";
       os << "\t\tencoder.Encode(values, ";
       gen_plain_var_id_go(object_id, os);
       os << ")\n";
@@ -385,21 +181,6 @@ void gen_op_terms_go(
   TermsCtxtObjectsInfo &terms_ctxt_objects_info)
 {
   os << "\n\t// FHE Operations\n";
-
-  std::unordered_map<size_t, std::vector<const ir::Term *>> rotation_clusters;
-  for (auto term : func->get_top_sorted_terms())
-    if (term->is_operation() && term->op_code().type() == ir::OpCode::Type::rotate)
-      rotation_clusters[term->operands()[0]->id()].push_back(term);
-
-  std::unordered_set<size_t> hoisted_inputs;
-  for (const auto &[input_id, rotations] : rotation_clusters)
-    if (rotations.size() >= 2)
-      hoisted_inputs.insert(input_id);
-  if (!hoisted_inputs.empty())
-  {
-    os << "\tbuffDecompQP := eval.GetBuffDecompQP()\n";
-    os << "\tvar lastDecompID int = -1\n";
-  }
   
   for (auto term : func->get_top_sorted_terms())
   {
@@ -484,43 +265,13 @@ void gen_op_terms_go(
     }
     else if (term->op_code().type() == ir::OpCode::Type::rotate)
     {
+      // Rotation: eval.Rotate(ct, k, ctOut)
       int steps = term->op_code().steps();
-      const auto input_id = term->operands()[0]->id();
-      const auto input_object_id = operands_ctxt_objects_ids[0];
-      if (hoisted_inputs.count(input_id) && steps != 0)
-      {
-        os << "\tif lastDecompID != " << input_object_id << " {\n";
-        os << "\t\teval.DecomposeNTT(";
-        gen_cipher_var_id_go(input_object_id, os);
-        os << ".Level(), params.MaxLevelP(), params.PCount(), ";
-        gen_cipher_var_id_go(input_object_id, os);
-        os << ".Value[1], ";
-        gen_cipher_var_id_go(input_object_id, os);
-        os << ".IsNTT, buffDecompQP)\n";
-        os << "\t\tlastDecompID = " << input_object_id << "\n\t}\n";
-        os << "\tif ";
-        gen_cipher_var_id_go(term_object_id, os);
-        os << " == nil { ";
-        gen_cipher_var_id_go(term_object_id, os);
-        os << " = rlwe.NewCiphertext(params, 1, ";
-        gen_cipher_var_id_go(input_object_id, os);
-        os << ".Level()) }\n";
-        os << "\t_ = eval.AutomorphismHoisted(";
-        gen_cipher_var_id_go(input_object_id, os);
-        os << ".Level(), ";
-        gen_cipher_var_id_go(input_object_id, os);
-        os << ", buffDecompQP, params.GaloisElement(" << steps << "), ";
-        gen_cipher_var_id_go(term_object_id, os);
-        os << ")\n";
-      }
-      else
-      {
-        os << "\t";
-        gen_cipher_var_id_go(term_object_id, os);
-        os << ", _ = eval.RotateNew(";
-        gen_cipher_var_id_go(input_object_id, os);
-        os << ", " << steps << ")\n";
-      }
+      os << "\t";
+      gen_cipher_var_id_go(term_object_id, os);
+      os << ", _ = eval.RotateNew(";
+      gen_cipher_var_id_go(operands_ctxt_objects_ids[0], os);
+      os << ", " << steps << ")\n";
     }
     else if (term->op_code().type() == ir::OpCode::Type::square)
     {
@@ -538,8 +289,6 @@ void gen_op_terms_go(
       os << ", ";
       gen_cipher_var_id_go(term_object_id, os);
       os << ")\n";
-      if (!hoisted_inputs.empty())
-        os << "\tlastDecompID = -1\n";
     }
     else if (term->op_code().type() == ir::OpCode::Type::rescale)
     {
@@ -667,17 +416,15 @@ void gen_op_terms_go(
       
       os << ")\n";
       
-      // Every CKKS multiplication raises the scale. A plaintext operand does
-      // not remove that requirement, so normalize both multiplication forms.
-      if (op_name == "MulRelin" || op_name == "Mul")
+      // Auto-rescale after cipher-cipher multiplication (CKKS)
+      // MulRelin operations need rescale to maintain scale
+      if (op_name == "MulRelin")
       {
         os << "\t_ = eval.Rescale(";
         gen_cipher_var_id_go(term_object_id, os);
         os << ", ";
         gen_cipher_var_id_go(term_object_id, os);
         os << ")\n";
-        if (!hoisted_inputs.empty())
-          os << "\tlastDecompID = -1\n";
       }
     }
   }
@@ -741,10 +488,8 @@ void gen_main_go(
   const string &func_name,
   const unordered_set<int> &rotation_steps,
   ostream &os,
-  const shared_ptr<ir::Func> &func,
   const ckks::CKKSParams* ckks_params,
-  const set<string> &cipher_input_labels,
-  size_t bootstrap_count)
+  const set<string> &cipher_input_labels)
 {
   // Use provided params or create defaults
   ckks::CKKSParams params;
@@ -780,18 +525,10 @@ void gen_main_go(
   
   os << "\t\tLogDefaultScale: " << params.log_scale << ",\n";
   
-  if (params.ring_type == ckks::RingType::ConjugateInvariant)
-  {
-    os << "\t\tRingType:        ring.ConjugateInvariant,\n";
-  }
-  else if (params.enable_bootstrap)
-  {
-    os << "\t\tRingType:        ring.Standard,\n";
-  }
-
-  if (params.hamming_weight > 0 && (params.enable_bootstrap || params.hamming_weight == 8192))
+  if (params.enable_bootstrap)
   {
     os << "\t\tXs:              ring.Ternary{H: " << params.hamming_weight << "},\n";
+    os << "\t\tRingType:        ring.Standard,\n";
   }
   
   os << "\t})\n";
@@ -812,7 +549,9 @@ void gen_main_go(
 		galoisElements[i] = params.GaloisElement(r)
 	}
 
+	keys_time := time.Now()
 	gks := kgen.GenGaloisKeysNew(galoisElements, sk)
+	keys_elapsed := time.Since(keys_time).Seconds() * 1000.0
 
 	var galois_keys_total_size int
 	for _, gk := range gks {
@@ -877,78 +616,51 @@ void gen_main_go(
   }
   
   os << R"(
-	// Deterministic inputs and timing setup.
-	repetitions := flag.Int("repetitions", 1, "number of encrypted inference repetitions")
-	flag.Parse()
-	if *repetitions < 1 { panic("repetitions must be positive") }
+	// Input/Output maps
 	encryptedInputs := make(map[string]*rlwe.Ciphertext)
 	encodedInputs := make(map[string]*rlwe.Plaintext)
 	encryptedOutputs := make(map[string]*rlwe.Ciphertext)
 	encodedOutputs := make(map[string]*rlwe.Plaintext)
-	encryptStart := time.Now()
+
 )";
 
   // Generate encrypted inputs for each unique cipher input label
+  os << "\t// Prepare encrypted inputs\n";
   os << "\tvalues := make([]float64, params.MaxSlots())\n";
-  os << "\tfor i := range values { values[i] = float64((i % 17) + 1) / 17.0 }\n";
+  os << "\tfor i := range values { values[i] = float64(i) }\n";
   for (const auto &label : cipher_input_labels)
   {
     os << "\t{\n";
     os << "\t\tpt := hefloat.NewPlaintext(params, params.MaxLevel())\n";
-    os << "\t\tif err := encoder.Encode(values, pt); err != nil { panic(err) }\n";
-    os << "\t\tct, err := enc.EncryptNew(pt)\n";
-    os << "\t\tif err != nil { panic(err) }\n";
+    os << "\t\tencoder.Encode(values, pt)\n";
+    os << "\t\tct, _ := enc.EncryptNew(pt)\n";
     os << "\t\tencryptedInputs[\"" << label << "\"] = ct\n";
     os << "\t}\n";
   }
 
   os << R"(
-	encryptMillis := float64(time.Since(encryptStart).Microseconds()) / 1000.0
-	precisionChecked := false
-)";
-  if (can_generate_primitive_reference(func))
-  {
-    gen_primitive_reference_go(func, os);
-    os << "\tprecisionChecked = true\n";
-  }
-  else
-  {
-    os << "\texpectedOutputs := make(map[string][]float64)\n";
-  }
-  os << R"(
-	computeStart := time.Now()
-	for i := 0; i < *repetitions; i++ {
+	// Run computation
+	t := time.Now()
 	)";
-  os << "\t\t" << func_name;
+  os << func_name;
   os << R"((encryptedInputs, encodedInputs, encryptedOutputs, encodedOutputs, encoder, enc, eval, params)
-	}
-	computeMillis := float64(time.Since(computeStart).Microseconds()) / 1000.0 / float64(*repetitions)
-	decryptStart := time.Now()
-	maxAbsError := 0.0
+	elapsed := time.Since(t).Seconds() * 1000.0
+
+	// Decrypt and print results
 	for name, ct := range encryptedOutputs {
 		pt := dec.DecryptNew(ct)
 		values := make([]float64, params.MaxSlots())
-		if err := encoder.Decode(pt, values); err != nil { panic(err) }
-		if precisionChecked {
-			for i, expected := range expectedOutputs[name] {
-				maxAbsError = math.Max(maxAbsError, math.Abs(values[i]-expected))
-			}
-		}
+		encoder.Decode(pt, values)
 		fmt.Printf("%s: [%.4f, %.4f, %.4f, ...]\n", name, values[0], values[1], values[2])
 	}
-	decryptMillis := float64(time.Since(decryptStart).Microseconds()) / 1000.0
-	levelsEnd := -1
-	for _, ct := range encryptedOutputs { levelsEnd = ct.Level(); break }
-	maxAbsErrorJSON := "null"
-	if precisionChecked { maxAbsErrorJSON = fmt.Sprintf("%.12g", maxAbsError) }
-	fmt.Printf("BENCHMARK_METRICS {\"repetitions\":%d,\"encrypt_ms\":%.3f,\"compute_ms\":%.3f,\"decrypt_ms\":%.3f,\"galois_keys\":%d,\"bootstrap_count\":)"
-     << bootstrap_count
-     << R"(,\"level_start\":%d,\"level_end\":%d,\"max_abs_error\":%s,\"precision_checked\":%t}\n",
-		*repetitions, encryptMillis, computeMillis, decryptMillis, len(galoisElements), params.MaxLevel(), levelsEnd, maxAbsErrorJSON, precisionChecked)
+
 	_ = encodedOutputs
+	fmt.Printf("circuit_execution_time_(ms): %f\n", elapsed)
+	fmt.Printf("galois_keys_generation_time_(ms): %f\n", keys_elapsed)
+	fmt.Printf("total_execution_time_(ms): %f\n", elapsed+keys_elapsed)
+	fmt.Println("CKKS computation completed!")
 }
 )";
 }
 
 } // namespace fheco::code_gen::lattigo
-

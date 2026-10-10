@@ -98,10 +98,8 @@ void gen_main_go(
   const std::string &func_name,
   const std::unordered_set<int> &rotation_steps,
   std::ostream &os,
-  const std::shared_ptr<ir::Func> &func,
   const ckks::CKKSParams* ckks_params = nullptr,
-  const std::set<std::string> &cipher_input_labels = {},
-  std::size_t bootstrap_count = 0);
+  const std::set<std::string> &cipher_input_labels = {});
 
 /**
  * @brief Helper to generate cipher variable name
@@ -114,4 +112,3 @@ void gen_cipher_var_id_go(std::size_t term_id, std::ostream &os);
 void gen_plain_var_id_go(std::size_t term_id, std::ostream &os);
 
 } // namespace fheco::code_gen::lattigo
-
