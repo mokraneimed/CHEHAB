@@ -16,8 +16,16 @@ def run_agent_mo(expressions_file: str, embeddings_model, model_filepath: str, o
         sys.exit(1)
         return
     
+    from pathlib import Path
+    rules_path = Path("rules.txt")
+    if not rules_path.is_file():
+        rules_path = Path(__file__).resolve().parent.parent / "rules.txt"
+    rot_rules_path = Path("rotations_rules.txt")
+    if not rot_rules_path.is_file():
+        rot_rules_path = Path(__file__).resolve().parent.parent / "rotations_rules.txt"
+
     from pytrs.rules import _create_rules_mo
-    rules_list = _create_rules_mo("rules.txt", "rotations_rules.txt")
+    rules_list = _create_rules_mo(str(rules_path), str(rot_rules_path))
     rules_list["END"] = None
     print(f"DEBUG: len(rules_list) = {len(rules_list)}")
     max_positions = 16
@@ -62,9 +70,14 @@ def run_agent_mo(expressions_file: str, embeddings_model, model_filepath: str, o
         steps += 1
 
     parsed = parse_sexpr(last_expr)
-    vec_sizes=" ".join(str(x) for x in calc_vec_sizes(parsed))
-    with open (output_file, "w") as f:
-        f.write(last_expr+"\n"+vec_sizes)
+    vec_s = calc_vec_sizes(parsed)
+    if vec_s:
+        sz = vec_s[0]
+        footer = f"{sz} {sz} 1 0"
+    else:
+        footer = "1 1 1 0"
+    with open(output_file, "w") as f:
+        f.write(last_expr + "\n" + footer + "\n")
     
     end_time = time.perf_counter()
     print(f"Elapsed inference time: {end_time - start_time} seconds")

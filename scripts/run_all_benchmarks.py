@@ -18,7 +18,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 BUILD_DIR = REPO_ROOT / "build"
 LATTIGO_DIR = REPO_ROOT / "lattigo_backend"
 RESULTS_DIR = REPO_ROOT / "results"
-TARGET = "dnn_tensor_benchmarks_runner"
+TARGET = "dnn_tensor_benchmarks_runner_bin"
 
 
 @dataclass(frozen=True)
@@ -45,9 +45,13 @@ def parse_args() -> argparse.Namespace:
                         help="comma-separated: conv2d,full_dnn,cryptonets,mlp,lola,alexnet")
     parser.add_argument("--repetitions", type=int, default=3,
                         help="encrypted inference repetitions per benchmark")
-    parser.add_argument("--optimizer", choices=("trs", "none"), default="trs")
+    parser.add_argument("--optimizer", choices=("trs", "original_rl", "morl", "constrained_rl", "none"),
+                        default="trs", help="veclang optimizer: trs, original_rl, morl, constrained_rl, none")
+    parser.add_argument("--w-ops", type=float, default=0.5,
+                        help="weight for operations in MORL (default: 0.5)")
     parser.add_argument("--bsgs-base", default="global", help="global, 0, or a positive BSGS base")
     parser.add_argument("--skip-build", action="store_true")
+    parser.add_argument("--output-csv", default=None, help="custom path for output CSV file")
     parser.add_argument("--timeout", type=int, default=180, help="per-command timeout in seconds")
     return parser.parse_args()
 
@@ -120,8 +124,20 @@ def empty_row(benchmark: Benchmark, repetitions: int) -> dict[str, Any]:
 
 def execute_benchmark(benchmark: Benchmark, executable: Path, args: argparse.Namespace) -> dict[str, Any]:
     row = empty_row(benchmark, args.repetitions)
-    dsl = run([str(executable), "--benchmark", benchmark.name, "--optimizer", args.optimizer,
-               "--bsgs-base", args.bsgs_base], executable.parent, args.timeout)
+    cmd = [str(executable), "--benchmark", benchmark.name, "--optimizer", args.optimizer,
+           "--bsgs-base", args.bsgs_base]
+    if args.optimizer == "morl":
+        cmd.extend(["--w-ops", str(args.w_ops)])
+    try:
+        dsl = run(cmd, executable.parent, args.timeout)
+    except subprocess.TimeoutExpired:
+        row.update(
+            dsl_generation_ms="TIMEOUT",
+            run_status="TIMEOUT",
+            error_message=f"DSL generation exceeded the {args.timeout}s timeout",
+        )
+        return row
+
     dsl_output = dsl.stdout + dsl.stderr
     row["dsl_generation_ms"] = dsl_time(dsl_output) or ""
     row["generated_file"] = str(benchmark.generated_go)
@@ -132,8 +148,17 @@ def execute_benchmark(benchmark: Benchmark, executable: Path, args: argparse.Nam
         row.update(run_status="GENERATE_FAILED", error_message="Generated Go program was not created")
         return row
 
-    go = run(["go", "run", str(benchmark.generated_go), "-repetitions", str(args.repetitions)],
-             LATTIGO_DIR, args.timeout)
+    try:
+        go = run(["go", "run", str(benchmark.generated_go), "-repetitions", str(args.repetitions)],
+                 LATTIGO_DIR, args.timeout)
+    except subprocess.TimeoutExpired:
+        row.update(
+            total_measured_ms="TIMEOUT",
+            run_status="TIMEOUT",
+            error_message=f"Encrypted benchmark exceeded the {args.timeout}s timeout",
+        )
+        return row
+
     go_output = go.stdout + go.stderr
     if go.returncode:
         row.update(run_status="LATTIGO_FAILED", error_message=first_lines(go_output))
@@ -166,9 +191,10 @@ def execute_benchmark(benchmark: Benchmark, executable: Path, args: argparse.Nam
     return row
 
 
-def write_csv(rows: Iterable[dict[str, Any]]) -> Path:
+def write_csv(rows: Iterable[dict[str, Any]], output_path: Path | None = None) -> Path:
     RESULTS_DIR.mkdir(exist_ok=True)
-    output = RESULTS_DIR / "all_benchmarks_fhe_metrics.csv"
+    output = output_path if output_path is not None else (RESULTS_DIR / "all_benchmarks_fhe_metrics.csv")
+    output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(file, fieldnames=CSV_FIELDS)
         writer.writeheader()
@@ -211,7 +237,8 @@ def main() -> int:
         rows.append(row)
         print(f"  {row['run_status']}")
 
-    csv_path = write_csv(rows)
+    output_path = Path(args.output_csv) if args.output_csv else None
+    csv_path = write_csv(rows, output_path)
     print_summary(rows)
     print(f"\nResults saved to: {csv_path}")
     return 0 if all(row["run_status"] == "SUCCESS" for row in rows) else 1

@@ -902,6 +902,22 @@ void gen_main_go(
     os << "\t}\n";
   }
 
+  // Generate encoded plaintext inputs for each unique plain input label
+  std::set<std::string> plain_input_labels;
+  for (const auto &input_info : func->data_flow().inputs_info())
+  {
+    if (input_info.first->type() == ir::Term::Type::plain)
+      plain_input_labels.insert(input_info.second.label_);
+  }
+  for (const auto &label : plain_input_labels)
+  {
+    os << "\t{\n";
+    os << "\t\tpt := hefloat.NewPlaintext(params, params.MaxLevel())\n";
+    os << "\t\tif err := encoder.Encode(values, pt); err != nil { panic(err) }\n";
+    os << "\t\tencodedInputs[\"" << label << "\"] = pt\n";
+    os << "\t}\n";
+  }
+
   os << R"(
 	encryptMillis := float64(time.Since(encryptStart).Microseconds()) / 1000.0
 	precisionChecked := false
