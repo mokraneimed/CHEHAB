@@ -499,8 +499,64 @@ void gen_main_go(
     // Default params for depth ~7
     params = ckks::CKKSParamSelector::default_params(7);
   }
-  
+
+  os << R"(
+func getCurrentRSS() uint64 {
+	if data, err := os.ReadFile("/proc/self/statm"); err == nil {
+		fields := strings.Fields(string(data))
+		if len(fields) >= 2 {
+			if resident, err := strconv.ParseUint(fields[1], 10, 64); err == nil {
+				return resident * uint64(os.Getpagesize())
+			}
+		}
+	}
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	return m.Sys
+}
+
+type RamMemSampler struct {
+	running  atomic.Bool
+	peakUsed atomic.Uint64
+	done     chan struct{}
+}
+
+func newRamMemSampler() *RamMemSampler {
+	return &RamMemSampler{
+		done: make(chan struct{}),
+	}
+}
+
+func (s *RamMemSampler) Start() {
+	s.peakUsed.Store(0)
+	s.running.Store(true)
+	go func() {
+		defer close(s.done)
+		for s.running.Load() {
+			used := getCurrentRSS()
+			for {
+				prev := s.peakUsed.Load()
+				if used <= prev {
+					break
+				}
+				if s.peakUsed.CompareAndSwap(prev, used) {
+					break
+				}
+			}
+			time.Sleep(100 * time.Microsecond)
+		}
+	}()
+}
+
+func (s *RamMemSampler) Stop() {
+	s.running.Store(false)
+	<-s.done
+}
+)";
+
   os << "\nfunc main() {\n";
+  os << "\tsampler := newRamMemSampler()\n";
+  os << "\tsampler.Start()\n\n";
   os << "\t// CKKS Parameters (generated from CKKSParamSelector)\n";
   os << "\t// LogN=" << params.log_n << " (n=" << params.poly_modulus_degree() << ", slots=" << params.slot_count() << ")\n";
   os << "\t// MaxLevel=" << params.max_level() << ", LogScale=" << params.log_scale << "\n";
@@ -519,7 +575,7 @@ void gen_main_go(
   os << "\t\tLogP:            []int{";
   for (size_t i = 0; i < params.log_p.size(); ++i) {
     if (i > 0) os << ", ";
-    os << params.log_p[i];
+    os << std::max(50, params.log_p[i]);
   }
   os << "},\n";
   
@@ -659,6 +715,9 @@ void gen_main_go(
 	fmt.Printf("galois_keys_generation_time_(ms): %f\n", keys_elapsed)
 	fmt.Printf("total_execution_time_(ms): %f\n", elapsed+keys_elapsed)
 	fmt.Println("CKKS computation completed!")
+
+	sampler.Stop()
+	fmt.Printf("peak_ram_memory_(MB): %f\n", float64(sampler.peakUsed.Load())/(1024.0*1024.0))
 }
 )";
 }

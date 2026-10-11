@@ -42,20 +42,26 @@ constexpr std::string_view ops_id{"ops"};
 constexpr std::size_t line_threshold = 16;
 
 constexpr std::string_view header_includes{
-  R"(#pragma once
-
-#include <string>
+  R"(#include <string>
 #include <unordered_map>
 #include <vector>
 #include <heongpu/heongpu.hpp>
 )"};
 
 constexpr std::string_view source_includes{
-  R"(#include <cstddef>
+  R"(#include <cmath>
+
+#include <cstddef>
 #include <cstdint>
 #include <utility>
 #include <chrono>
 #include <iostream>
+
+#include <atomic>
+#include <thread>
+#include <cuda_runtime.h>
+
+#include <sstream>
 )"};
 
 constexpr std::string_view source_usings{

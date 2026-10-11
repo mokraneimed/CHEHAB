@@ -52,6 +52,11 @@ R"(package main
 
 import (
 	"fmt"
+	"os"
+	"runtime"
+	"strconv"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
@@ -66,6 +71,11 @@ R"(package main
 
 import (
 	"fmt"
+	"os"
+	"runtime"
+	"strconv"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
@@ -81,6 +91,11 @@ R"(package main
 
 import (
 	"fmt"
+	"os"
+	"runtime"
+	"strconv"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
