@@ -1,3 +1,9 @@
+import sys
+from pathlib import Path
+_cur_dir = str(Path(__file__).resolve().parent)
+if _cur_dir not in sys.path:
+    sys.path.insert(0, _cur_dir)
+
 from serializer import expr_to_str, expr_to_tok, VARIABLE_RANGE, node_to_id, CONST_OFFSET, PAREN_CLOSE, PAREN_OPEN, MAX_INT_TOKENS
 from expr import Expr,Const,Var,Op
 from rules import create_rules,group_rules_from_dict

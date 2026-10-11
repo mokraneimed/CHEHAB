@@ -23,29 +23,29 @@ set(DESTINATION_FILE_6 ${CMAKE_SOURCE_DIR}/build/benchmarks/box_blur/generate_bo
 
 add_custom_target(copy_my_file_6box_blur ALL 
     COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_6} ${DESTINATION_FILE_6}
-    DEPENDS ${SOURCE_FILE}
+    DEPENDS ${SOURCE_FILE_6}
     COMMENT "Copying ${SOURCE_FILE_6} to ${DESTINATION_FILE_6}"
 )
 add_custom_target(copy_my_file_2box_blur ALL
     COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_2} ${DESTINATION_FILE_2}
-    DEPENDS ${SOURCE_FILE}
+    DEPENDS ${SOURCE_FILE_2}
     COMMENT "Copying ${SOURCE_FILE_2} to ${DESTINATION_FILE_2}"
 )
 add_custom_target(copy_my_file_3box_blur ALL
     COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_3} ${DESTINATION_FILE_3}
-    DEPENDS ${SOURCE_FILE}
+    DEPENDS ${SOURCE_FILE_3}
     COMMENT "Copying ${SOURCE_FILE_3} to ${DESTINATION_FILE_3}"
 )
 add_custom_target(copy_my_file_5box_blur ALL 
     COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_5} ${DESTINATION_FILE_5}
-    DEPENDS ${SOURCE_FILE}
+    DEPENDS ${SOURCE_FILE_5}
     COMMENT "Copying ${SOURCE_FILE_5} to ${DESTINATION_FILE_5}"
 )
 set(SOURCE_FILE_4 ${CMAKE_SOURCE_DIR}/benchmarks/box_blur/he/CMakeLists.txt)
 set(DESTINATION_FILE_4 ${CMAKE_SOURCE_DIR}/build/benchmarks/box_blur/he/CMakeLists.txt)
 add_custom_target(copy_my_file_4box_blur ALL
     COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_4} ${DESTINATION_FILE_4}
-    DEPENDS ${SOURCE_FILE}
+    DEPENDS ${SOURCE_FILE_4}
     COMMENT "Copying ${SOURCE_FILE_4} to ${DESTINATION_FILE_4}"
 )
 

@@ -1,4 +1,4 @@
-#include "fheco/ckks/ckks_params.hpp"
+﻿#include "fheco/ckks/ckks_params.hpp"
 #include "fheco/ckks/ckks_scale_manager.hpp"
 #include "fheco/code_gen/gen_func.hpp"
 #include "fheco/code_gen/gen_func_lattigo.hpp"
@@ -821,7 +821,17 @@ void Compiler::call_rl_vectorizer(int vector_width, float w_ops, float w_keys, c
     2.  Locate everything we need
         (project_root is the parent of fhe_rl and rl_venv)
   -----------------------------------------------------------------*/
-  const fs::path project_root = fs::absolute("../../../RL");
+  fs::path project_root;
+  for (const auto& candidate : {"../../../RL", "../../RL", "../RL", "./RL", "RL"}) {
+    if (fs::exists(candidate)) {
+      project_root = fs::canonical(candidate);
+      break;
+    }
+  }
+  if (project_root.empty()) {
+    project_root = fs::absolute("../../../RL");
+  }
+
   const fs::path expr_file = fs::absolute("../expression.txt");
   const fs::path vect_file = fs::absolute("../vectorized_code.txt");
 
@@ -838,11 +848,8 @@ void Compiler::call_rl_vectorizer(int vector_width, float w_ops, float w_keys, c
   }
 
   /*-----------------------------------------------------------------
-    4.  Build one bash command:
-        - source the venv
-        - then run the package in that environment
-        Every path lives inside single quotes to survive spaces.
-        Note: embeddings model path is now loaded from config.py
+    4.  Build one bash/cmd command:
+        Double quotes around paths for Windows cmd.exe compatibility.
   -----------------------------------------------------------------*/
   std::ostringstream cmd;
   cmd << "python -m fhe_rl ";
@@ -852,9 +859,9 @@ void Compiler::call_rl_vectorizer(int vector_width, float w_ops, float w_keys, c
       cmd << "--framework morl ";
   }
   cmd << "run "
-      << "'" << expr_file.string() << "' "
-      << "'" << vect_file.string() << "'";
-  if ((framework == "mo" || framework == "morl" || (framework.empty() && w_ops >= 0.0f)) && w_ops >= 0.0f) {
+      << "\"" << expr_file.string() << "\" "
+      << "\"" << vect_file.string() << "\"";
+  if (w_ops >= 0.0f) {
       cmd << " --w_ops " << w_ops;
   }
   std::cout << "Executing: " << cmd.str() << '\n';
@@ -933,7 +940,12 @@ void update_io_file(
   }
   else
   {
-    std::cerr << "Unable to open file: " << inputs_file_name << std::endl;
+    // fhe_io_example.txt is optional; if missing, skip updating io file
+    return;
+  }
+  if (lines.empty())
+  {
+    return;
   }
   /***************************************************************************/
   std::unordered_map<string, string> plaintexts;
@@ -1606,6 +1618,35 @@ string process_composed_vectors(
         return "( - " +
                process_composed_vectors(vec_ops1, dictionary, inputs_entries, inputs, inputs_types, slot_count) + " )";
       }
+      else
+      {
+        string new_element = "";
+        for (auto val : vector_elements)
+        {
+          new_element += val + " ";
+        }
+        string string_vector = "Vec " + new_element.substr(0, new_element.size() - 1);
+        if (dictionary.find(string_vector) == dictionary.end())
+        {
+          string res = "";
+          for (int i = 0; i < slot_count; i++)
+          {
+            res += vector_elements[i % vector_elements.size()] + " ";
+          }
+          new_element = res.substr(0, res.size() - 1);
+          string label = "c" + std::to_string(id_counter);
+          new_element = "1 1 " + new_element;
+          labels_map[id_counter] = label;
+          inputs_entries[label] = new_element;
+          id_counter++;
+          dictionary[string_vector] = label;
+          return label;
+        }
+        else
+        {
+          return dictionary[string_vector];
+        }
+      }
     }
     else if (!all_simple_elements_eq_0)
     {
@@ -1617,9 +1658,13 @@ string process_composed_vectors(
       {
         if (!is_literal(val))
         {
-          if (inputs_types[std::distance(inputs.begin(), std::find(inputs.begin(), inputs.end(), val))] == "1")
+          auto it = std::find(inputs.begin(), inputs.end(), val);
+          if (it != inputs.end())
           {
-            is_literal_val = false;
+            if (inputs_types[std::distance(inputs.begin(), it)] == "1")
+            {
+              is_literal_val = false;
+            }
           }
         }
         new_element += val + " ";
@@ -1688,6 +1733,7 @@ string process_composed_vectors(
       return dictionary[string_vector];
     }
   }
+  return "";
 }
 /************************************************************************/
 std::pair<std::string, int> process(
@@ -1847,6 +1893,12 @@ void Compiler::format_vectorized_code(const std::shared_ptr<ir::Func> &func, boo
       expressions.push_back(expression);
     }
     vec_file.close();
+  }
+  std::cout << "DEBUG: reading " << vectorized_file << " from " << std::filesystem::current_path() << ", expressions count = " << expressions.size() << std::endl;
+  if (expressions.empty())
+  {
+    std::cerr << "Error: No expressions found in " << vectorized_file << std::endl;
+    return;
   }
   /***********************************************************/
   //current_vector_width,current_vector_width,stop_reached,iteration

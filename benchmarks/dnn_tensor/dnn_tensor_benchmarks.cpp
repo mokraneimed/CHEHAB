@@ -240,9 +240,13 @@ ckks::CKKSParams get_orion_ckks_params(const string &benchmark)
 
 int main(int argc, char **argv)
 {
+  std::cout.setf(std::ios::unitbuf);
+  std::cerr.setf(std::ios::unitbuf);
   string benchmark = "cryptonets";
   bool global_bsgs = false;
   bool optimize = true;
+  string optimizer = "trs";
+  float w_ops = 0.5f;
   int user_slots = -1;
 
   for (int index = 1; index < argc; ++index)
@@ -260,7 +264,15 @@ int main(int argc, char **argv)
     {
       const string value = argv[index];
       if (value == "none") optimize = false;
-      else if (value != "trs") throw invalid_argument("--optimizer must be trs or none");
+      else if (value != "trs" && value != "original_rl" && value != "morl" && value != "constrained_rl")
+      {
+        throw invalid_argument("--optimizer must be trs, original_rl, morl, constrained_rl, or none");
+      }
+      optimizer = value;
+    }
+    else if (argument == "--w-ops" && ++index < argc)
+    {
+      w_ops = stof(argv[index]);
     }
     else throw invalid_argument("unknown argument: " + argument);
   }
@@ -284,7 +296,33 @@ int main(int argc, char **argv)
   const auto &func = Compiler::create_func(function_name, slots, 20, false, true);
   const auto started = chrono::steady_clock::now();
   build(benchmark, slots);
-  if (optimize) Compiler::compile(func, Compiler::Ruleset::depth, trs::RewriteHeuristic::bottom_up);
+  if (optimizer != "none")
+  {
+    try
+    {
+      if (optimizer == "trs")
+      {
+        Compiler::compile(func, Compiler::Ruleset::depth, trs::RewriteHeuristic::bottom_up);
+      }
+      else if (optimizer == "original_rl")
+      {
+        Compiler::gen_vectorized_code(func, 0, 1, -1.0f, -1.0f, "original");
+      }
+      else if (optimizer == "morl")
+      {
+        Compiler::gen_vectorized_code(func, 0, 1, w_ops, 1.0f - w_ops, "morl");
+      }
+      else if (optimizer == "constrained_rl")
+      {
+        Compiler::gen_vectorized_code(func, 0, 1, -1.0f, -1.0f, "constrained");
+      }
+    }
+    catch (const std::exception &e)
+    {
+      std::cerr << "CRITICAL ERROR in optimizer (" << optimizer << "): " << e.what() << std::endl;
+      throw;
+    }
+  }
 
   filesystem::create_directories("he");
   const string output = "he/" + function_name + "_auto.go";

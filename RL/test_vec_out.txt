@@ -1,0 +1,2 @@
+(VecAdd (VecMul (Vec x_0 2) (Vec x_0 x_0)) (<< (VecMul (Vec x_0 2) (Vec x_0 x_0)) 1))
+2 2 2 2

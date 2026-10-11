@@ -51,7 +51,9 @@ constexpr std::string_view go_file_header{
 R"(package main
 
 import (
+	"flag"
 	"fmt"
+	"math"
 	"os"
 	"runtime"
 	"strconv"
@@ -70,7 +72,9 @@ constexpr std::string_view go_file_header_ring{
 R"(package main
 
 import (
+	"flag"
 	"fmt"
+	"math"
 	"os"
 	"runtime"
 	"strconv"
@@ -90,7 +94,9 @@ constexpr std::string_view go_file_header_bootstrap{
 R"(package main
 
 import (
+	"flag"
 	"fmt"
+	"math"
 	"os"
 	"runtime"
 	"strconv"
@@ -222,3 +228,4 @@ inline std::string get_plain_var(std::size_t id) {
 }
 
 } // namespace fheco::code_gen::lattigo
+
