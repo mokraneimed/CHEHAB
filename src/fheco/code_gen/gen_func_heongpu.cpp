@@ -85,8 +85,34 @@ void gen_func_heongpu(
       cipher_input_labels.insert(input_info.second.label_);
   }
 
+  os << "struct GpuMemSampler {\n";
+  os << "    std::atomic<bool> running{false};\n";
+  os << "    std::atomic<size_t> peak_used{0};\n";
+  os << "    std::thread th;\n\n";
+  os << "    void start() {\n";
+  os << "        peak_used = 0;\n";
+  os << "        running = true;\n";
+  os << "        th = std::thread([this]() {\n";
+  os << "            while (running.load()) {\n";
+  os << "                size_t used = heongpu::MemoryPool::instance()\n";
+  os << "                                  .get_current_device_pool_memory_usage();\n";
+  os << "                size_t prev = peak_used.load();\n";
+  os << "                while (used > prev &&\n";
+  os << "                       !peak_used.compare_exchange_weak(prev, used)) {}\n";
+  os << "                std::this_thread::sleep_for(std::chrono::microseconds(100));\n";
+  os << "            }\n";
+  os << "        });\n";
+  os << "    }\n\n";
+  os << "    void stop() {\n";
+  os << "        running = false;\n";
+  os << "        if (th.joinable()) th.join();\n";
+  os << "    }\n";
+  os << "};\n\n";
+
   // Generate main()
   os << "int main(int argc, char **argv) {\n";
+  os << "    GpuMemSampler sampler;\n";
+  os << "    sampler.start();\n\n";
   if (scheme == 0) { // BFV
     if (bfv_params && !bfv_params->coeff_mod_bit_sizes().empty()) {
         os << "    int poly_modulus_degree = " << bfv_params->poly_mod_degree() << ";\n";
@@ -122,7 +148,7 @@ void gen_func_heongpu(
         os << "    std::vector<int> p_bits = {";
         for (size_t i = 0; i < ckks_params->log_p.size(); ++i) {
             if (i > 0) os << ", ";
-            os << ckks_params->log_p[i];
+            os << std::max(50, ckks_params->log_p[i]);
         }
         os << "};\n";
         os << "    double scale = pow(2.0, " << ckks_params->log_scale << ");\n";
@@ -150,12 +176,7 @@ void gen_func_heongpu(
 
   os << "    auto rotations = getRotationSteps();\n\n";
 
-  // Snapshot pool usage BEFORE the Galoiskey object is even constructed,
-  // since construction itself can allocate device buffers.
-  os << "    cudaDeviceSynchronize();\n";
-  os << "    size_t pool_usage_before =\n";
-  os << "        heongpu::MemoryPool::instance().get_current_device_pool_memory_usage();\n\n";
-
+  os << "    cudaDeviceSynchronize();\n\n";
   os << "    auto t_keys_start = std::chrono::high_resolution_clock::now();\n";
   // Galoiskey constructor takes the rotation steps vector
   os << "    heongpu::Galoiskey<SCHEME> galois_keys(context, rotations);\n";
@@ -166,12 +187,11 @@ void gen_func_heongpu(
   os << "    auto t_keys_end = std::chrono::high_resolution_clock::now();\n";
   os << "    double keys_elapsed = std::chrono::duration_cast<std::chrono::duration<double, std::milli>>(t_keys_end - t_keys_start).count();\n\n";
 
-  // Galois keys size from actual GPU memory pool delta
-  os << "    size_t pool_usage_after =\n";
-  os << "        heongpu::MemoryPool::instance().get_current_device_pool_memory_usage();\n";
-  os << "    double galois_keys_size_mb =\n";
-  os << "        static_cast<double>(pool_usage_after - pool_usage_before) / (1024.0 * 1024.0);\n";
-  os << "    std::cout << \"rotation_keys_size_(MB): \" << galois_keys_size_mb << \"\\n\";\n\n";
+  os << "    std::ostringstream key_stream(std::ios::binary);\n";
+  os << "    galois_keys.save(key_stream);\n";
+  os << "    size_t galois_keys_total_size = key_stream.str().size();\n";
+  os << "    std::cout << \"rotation_keys_size_(MB): \"\n";
+  os << "              << galois_keys_total_size / (1024.0 * 1024.0) << \"\\n\\n\";\n\n";
 
   os << "    heongpu::HEEncoder<SCHEME> encoder(context);\n";
   os << "    heongpu::HEEncryptor<SCHEME> encryptor(context, public_key);\n";
@@ -185,9 +205,11 @@ void gen_func_heongpu(
 
   os << "    std::size_t slot_count = poly_modulus_degree / 2;\n";
   if (scheme == 0) {
-      os << "    std::vector<uint64_t> values(slot_count, 1);\n";
+      os << "    std::vector<uint64_t> values(slot_count);\n";
+      os << "    for (std::size_t i = 0; i < slot_count; i++) values[i] = static_cast<uint64_t>(i);\n";
   } else {
-      os << "    std::vector<double> values(slot_count, 1.0);\n";
+      os << "    std::vector<double> values(slot_count);\n";
+      os << "    for (std::size_t i = 0; i < slot_count; i++) values[i] = static_cast<double>(i);\n";
   }
 
   for (const auto &label : cipher_input_labels) {
@@ -212,12 +234,26 @@ void gen_func_heongpu(
   os << "    std::cout << \"galois_keys_generation_time_(ms): \" << keys_elapsed << \"\\n\";\n";
   os << "    std::cout << \"total_execution_time_(ms): \" << (elapsed + keys_elapsed) << \"\\n\";\n";
 
+  os << "    for (auto& [name, ct] : encryptedOutputs) {\n";
+  os << "        heongpu::Plaintext<SCHEME> pt_out(context);\n";
+  os << "        decryptor.decrypt(pt_out, ct);\n\n";
   if (scheme == 0) {
-      os << "    for (const auto& pair : encryptedOutputs) {\n";
-      os << "        int remaining_noise_budget = decryptor.remainder_noise_budget(pair.second);\n";
-      os << "        std::cout << \"Remaining_noise_budget: \" << remaining_noise_budget << \" \\n\" << std::flush;\n";
-      os << "    }\n";
+      os << "        std::vector<uint64_t> out;\n";
+  } else {
+      os << "        std::vector<double> out;\n";
   }
+  os << "        encoder.decode(out, pt_out);\n\n";
+  os << "        std::cout << name << \": [\" << out[0] << \", \" << out[1] << \", \" << out[2] << \", ...]\\n\";\n";
+  if (scheme == 0) {
+      os << "        int remaining_noise_budget = decryptor.remainder_noise_budget(ct);\n";
+      os << "        std::cout << \"Remaining_noise_budget: \" << remaining_noise_budget << \" \\n\" << std::flush;\n";
+  }
+  os << "    }\n\n";
+  
+  os << "    cudaDeviceSynchronize();\n";
+  os << "    sampler.stop();\n";
+  os << "    std::cout << \"peak_gpu_memory_(MB): \"\n";
+  os << "              << sampler.peak_used.load() / (1024.0 * 1024.0) << \"\\n\";\n";
 
   os << "    return 0;\n";
   os << "}\n";
