@@ -1,6 +1,7 @@
 
 
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/l2_distance/he)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/l2_distance/heongpu)
 add_executable(l2_distance l2_distance.cpp)
 target_link_libraries(l2_distance PRIVATE fheco)
  
@@ -48,11 +49,11 @@ add_custom_target(copy_my_file_4l2_distance ALL
     DEPENDS ${SOURCE_FILE}
     COMMENT "Copying ${SOURCE_FILE_4} to ${DESTINATION_FILE_4}"
 )
-set(SOURCE_FILE_COMPILE_CUDA_l2_distance ${CMAKE_SOURCE_DIR}/benchmarks/l2_distance/compile_cuda.py)
-set(DESTINATION_FILE_COMPILE_CUDA_l2_distance ${CMAKE_SOURCE_DIR}/build/benchmarks/l2_distance/compile_cuda.py)
-add_custom_target(copy_compile_cuda_l2_distance ALL 
-    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_COMPILE_CUDA_l2_distance} ${DESTINATION_FILE_COMPILE_CUDA_l2_distance}
-    DEPENDS ${SOURCE_FILE_COMPILE_CUDA_l2_distance}
-    COMMENT "Copying ${SOURCE_FILE_COMPILE_CUDA_l2_distance} to ${DESTINATION_FILE_COMPILE_CUDA_l2_distance}"
-)
 
+set(SOURCE_FILE_HEONGPU_CMAKE_l2_distance ${CMAKE_SOURCE_DIR}/benchmarks/l2_distance/heongpu/CMakeLists.txt)
+set(DESTINATION_FILE_HEONGPU_CMAKE_l2_distance ${CMAKE_SOURCE_DIR}/build/benchmarks/l2_distance/heongpu/CMakeLists.txt)
+add_custom_target(copy_heongpu_cmake_l2_distance ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_HEONGPU_CMAKE_l2_distance} ${DESTINATION_FILE_HEONGPU_CMAKE_l2_distance}
+    DEPENDS ${SOURCE_FILE_HEONGPU_CMAKE_l2_distance}
+    COMMENT "Copying ${SOURCE_FILE_HEONGPU_CMAKE_l2_distance} to ${DESTINATION_FILE_HEONGPU_CMAKE_l2_distance}"
+)

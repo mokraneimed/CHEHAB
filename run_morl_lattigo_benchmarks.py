@@ -24,7 +24,7 @@ lattigo_to_csv_op = {
 
 infos = ["benchmark", "w_ops", "w_keys"]
 additional_infos = ["Depth", "Multiplicative Depth", "compile_time (s)", "circuit_execution_time (s)",
-                    'galois_keys_generation_time (s)', 'total_execution_time (s)', "Remaining_noise_budget",
+                    'galois_keys_generation_time (s)', 'total_execution_time (s)',
                     'rotation_keys_size (MB)', 'final_ops_cost', 'final_keys_cost']
 infos.extend(operations)
 infos.extend(additional_infos)
@@ -49,7 +49,7 @@ try:
 except subprocess.CalledProcessError as e:
     print(f"Command failed with error:\n{e.stderr}")   
 
-benchmark_folders = ["lin_reg","hamming_dist","poly_reg","l2_distance","dot_product","gx_kernel","gy_kernel","roberts_cross","matrix_mul","max","sort"]
+benchmark_folders = ["dot_product"]
 exceptions = ["max", "sort", "discrete_cosin_transform", "poly_derivative"]
 benchmarks_slot_counts = {
     "max": [3, 4, 5],
@@ -61,9 +61,9 @@ benchmarks_slot_counts = {
 optimization_method = 1
 cse_enabled = 1
 vectorize_code = 1
-slot_counts = [4, 8, 16, 32]
-pref_list = [[0.8, 0.2],[1.0, 0.0]]
-iterations = 1
+slot_counts = [4, 8]
+pref_list = generate_pref_list(11)
+iterations = 2
 window_size = 0
 depths = [5]
 regimes = ["100-50"]
@@ -118,7 +118,7 @@ def run_benchmark(subfolder_name, slot_count, w_ops, w_keys, build_path, build_p
         "add": [], "sub": [], "multiply_plain": [], "rotate_rows": [],
         "negate": [], "multiply": [], "Depth": [], "Multiplicative Depth": [],
         "compile_time (s)": [], "circuit_execution_time (s)": [], "galois_keys_generation_time (s)": [],
-        "total_execution_time (s)": [], "Remaining_noise_budget": [], "rotation_keys_size (MB)": [],
+        "total_execution_time (s)": [], "rotation_keys_size (MB)": [],
         "final_ops_cost": [], "final_keys_cost": []
     }
 
@@ -389,7 +389,7 @@ def run_poly_benchmark(subfolder_name, build_path, build_path_he, build_path_he_
         "negate": [], "multiply": [], "Depth": [], "Multiplicative Depth": [],
         "compile_time (s)": [], "circuit_execution_time (s)": [],
         "galois_keys_generation_time (s)": [], "total_execution_time (s)": [],
-        "Remaining_noise_budget": [], "rotation_keys_size (MB)": [],
+        "rotation_keys_size (MB)": [],
         "final_ops_cost": [], "final_keys_cost": []
     }
 

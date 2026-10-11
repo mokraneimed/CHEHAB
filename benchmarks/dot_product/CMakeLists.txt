@@ -1,5 +1,6 @@
 
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/dot_product/he)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/dot_product/heongpu)
 add_executable(dot_product dot_product.cpp)
 target_link_libraries(dot_product PRIVATE fheco)
  
@@ -48,11 +49,11 @@ add_custom_target(copy_my_file_4dot_product ALL
     DEPENDS ${SOURCE_FILE}
     COMMENT "Copying ${SOURCE_FILE_4} to ${DESTINATION_FILE_4}"
 )
-set(SOURCE_FILE_COMPILE_CUDA_dot_product ${CMAKE_SOURCE_DIR}/benchmarks/dot_product/compile_cuda.py)
-set(DESTINATION_FILE_COMPILE_CUDA_dot_product ${CMAKE_SOURCE_DIR}/build/benchmarks/dot_product/compile_cuda.py)
-add_custom_target(copy_compile_cuda_dot_product ALL 
-    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_COMPILE_CUDA_dot_product} ${DESTINATION_FILE_COMPILE_CUDA_dot_product}
-    DEPENDS ${SOURCE_FILE_COMPILE_CUDA_dot_product}
-    COMMENT "Copying ${SOURCE_FILE_COMPILE_CUDA_dot_product} to ${DESTINATION_FILE_COMPILE_CUDA_dot_product}"
-)
 
+set(SOURCE_FILE_HEONGPU_CMAKE_dot_product ${CMAKE_SOURCE_DIR}/benchmarks/dot_product/heongpu/CMakeLists.txt)
+set(DESTINATION_FILE_HEONGPU_CMAKE_dot_product ${CMAKE_SOURCE_DIR}/build/benchmarks/dot_product/heongpu/CMakeLists.txt)
+add_custom_target(copy_heongpu_cmake_dot_product ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_HEONGPU_CMAKE_dot_product} ${DESTINATION_FILE_HEONGPU_CMAKE_dot_product}
+    DEPENDS ${SOURCE_FILE_HEONGPU_CMAKE_dot_product}
+    COMMENT "Copying ${SOURCE_FILE_HEONGPU_CMAKE_dot_product} to ${DESTINATION_FILE_HEONGPU_CMAKE_dot_product}"
+)

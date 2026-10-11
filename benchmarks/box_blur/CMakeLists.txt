@@ -1,5 +1,6 @@
 
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/box_blur/he)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/box_blur/heongpu)
 add_executable(box_blur box_blur.cpp)
 target_link_libraries(box_blur PRIVATE fheco)
  
@@ -47,11 +48,11 @@ add_custom_target(copy_my_file_4box_blur ALL
     DEPENDS ${SOURCE_FILE}
     COMMENT "Copying ${SOURCE_FILE_4} to ${DESTINATION_FILE_4}"
 )
-set(SOURCE_FILE_COMPILE_CUDA_box_blur ${CMAKE_SOURCE_DIR}/benchmarks/box_blur/compile_cuda.py)
-set(DESTINATION_FILE_COMPILE_CUDA_box_blur ${CMAKE_SOURCE_DIR}/build/benchmarks/box_blur/compile_cuda.py)
-add_custom_target(copy_compile_cuda_box_blur ALL 
-    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_COMPILE_CUDA_box_blur} ${DESTINATION_FILE_COMPILE_CUDA_box_blur}
-    DEPENDS ${SOURCE_FILE_COMPILE_CUDA_box_blur}
-    COMMENT "Copying ${SOURCE_FILE_COMPILE_CUDA_box_blur} to ${DESTINATION_FILE_COMPILE_CUDA_box_blur}"
-)
 
+set(SOURCE_FILE_HEONGPU_CMAKE_box_blur ${CMAKE_SOURCE_DIR}/benchmarks/box_blur/heongpu/CMakeLists.txt)
+set(DESTINATION_FILE_HEONGPU_CMAKE_box_blur ${CMAKE_SOURCE_DIR}/build/benchmarks/box_blur/heongpu/CMakeLists.txt)
+add_custom_target(copy_heongpu_cmake_box_blur ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_HEONGPU_CMAKE_box_blur} ${DESTINATION_FILE_HEONGPU_CMAKE_box_blur}
+    DEPENDS ${SOURCE_FILE_HEONGPU_CMAKE_box_blur}
+    COMMENT "Copying ${SOURCE_FILE_HEONGPU_CMAKE_box_blur} to ${DESTINATION_FILE_HEONGPU_CMAKE_box_blur}"
+)

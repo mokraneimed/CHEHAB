@@ -1,5 +1,6 @@
 
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/gx_kernel/he)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/gx_kernel/heongpu)
 add_executable(gx_kernel gx_kernel.cpp)
 target_link_libraries(gx_kernel PRIVATE fheco)
 
@@ -52,11 +53,11 @@ add_custom_target(copy_my_file_4gx_kernel ALL
     DEPENDS ${SOURCE_FILE}
     COMMENT "Copying ${SOURCE_FILE_4} to ${DESTINATION_FILE_4}"
 )
-set(SOURCE_FILE_COMPILE_CUDA_gx_kernel ${CMAKE_SOURCE_DIR}/benchmarks/gx_kernel/compile_cuda.py)
-set(DESTINATION_FILE_COMPILE_CUDA_gx_kernel ${CMAKE_SOURCE_DIR}/build/benchmarks/gx_kernel/compile_cuda.py)
-add_custom_target(copy_compile_cuda_gx_kernel ALL 
-    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_COMPILE_CUDA_gx_kernel} ${DESTINATION_FILE_COMPILE_CUDA_gx_kernel}
-    DEPENDS ${SOURCE_FILE_COMPILE_CUDA_gx_kernel}
-    COMMENT "Copying ${SOURCE_FILE_COMPILE_CUDA_gx_kernel} to ${DESTINATION_FILE_COMPILE_CUDA_gx_kernel}"
-)
 
+set(SOURCE_FILE_HEONGPU_CMAKE_gx_kernel ${CMAKE_SOURCE_DIR}/benchmarks/gx_kernel/heongpu/CMakeLists.txt)
+set(DESTINATION_FILE_HEONGPU_CMAKE_gx_kernel ${CMAKE_SOURCE_DIR}/build/benchmarks/gx_kernel/heongpu/CMakeLists.txt)
+add_custom_target(copy_heongpu_cmake_gx_kernel ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_HEONGPU_CMAKE_gx_kernel} ${DESTINATION_FILE_HEONGPU_CMAKE_gx_kernel}
+    DEPENDS ${SOURCE_FILE_HEONGPU_CMAKE_gx_kernel}
+    COMMENT "Copying ${SOURCE_FILE_HEONGPU_CMAKE_gx_kernel} to ${DESTINATION_FILE_HEONGPU_CMAKE_gx_kernel}"
+)

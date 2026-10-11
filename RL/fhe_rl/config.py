@@ -47,12 +47,9 @@ PROJECT_ROOT = Path(__file__).parent.parent  # Go up to RL/ directory
 FHE_RL_DIR = Path(__file__).parent
 
 # Model paths configuration
-_constrained_model_path = FHE_RL_DIR / "trained_models" / "agent_lppo_13739880.zip"
-
 MODEL_PATHS = {
     "agent_model": FHE_RL_DIR / "trained_models" / "agent_dynamic_llm_data.zip",
     "mo_agent_model": FHE_RL_DIR / "trained_models" / "agent_pareto_2_full.zip",
-    "constrained_agent_model": _constrained_model_path,
     "gnn_agent_model": FHE_RL_DIR / "trained_models" / "agent_lppo_14848346.zip",
     "gnn_embeddings_model": FHE_RL_DIR / "trained_models" / "embeddings_gnn_model_epoch_100.pth",
     "dynamic_embeddings_model": FHE_RL_DIR / "trained_models" / "embeddings_ROT_15_32_5m_10742576.pth",
@@ -91,20 +88,20 @@ def set_framework(framework_name: str):
     """
     Set the framework to use for the RL agent.
     Updates COMPONENT_CONFIG based on the selected framework.
-    Supported frameworks: 'constrained'/'constrained_rl', 'mo'/'morl', 'original'/'original_rl'
+    Supported frameworks: 'constrained', 'mo', 'baseline'
     """
-    if framework_name in ("mo", "morl"):
+    if framework_name == "mo":
         COMPONENT_CONFIG["env_class"] = "fhe_rl.env_mo.fheEnvMO"
         COMPONENT_CONFIG["policy_class"] = "fhe_rl.policy_mo.HierarchicalMaskablePolicyMO"
         COMPONENT_CONFIG["wrapper_class"] = None
-    elif framework_name in ("constrained", "constrained_rl"):
+    elif framework_name == "baseline":
+        COMPONENT_CONFIG["env_class"] = "fhe_rl.baseline.env_baseline.fheEnv"
+        COMPONENT_CONFIG["policy_class"] = "fhe_rl.baseline.policy_baseline.HierarchicalMaskablePolicy"
+        COMPONENT_CONFIG["wrapper_class"] = "auto"
+    elif framework_name == "constrained":
         COMPONENT_CONFIG["env_class"] = "fhe_rl.env.fheEnv"
         COMPONENT_CONFIG["policy_class"] = "fhe_rl.policy.HierarchicalMaskablePolicy"
         COMPONENT_CONFIG["wrapper_class"] = "auto"
-    elif framework_name in ("original", "original_rl"):
-        COMPONENT_CONFIG["env_class"] = "fhe_rl.env.fheEnv"
-        COMPONENT_CONFIG["policy_class"] = "fhe_rl.policy.HierarchicalMaskablePolicy"
-        COMPONENT_CONFIG["wrapper_class"] = None
     else:
         raise ValueError(f"Unknown framework: {framework_name}")
 

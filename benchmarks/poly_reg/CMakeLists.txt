@@ -1,5 +1,6 @@
 
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/poly_reg/he)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/poly_reg/heongpu)
 add_executable(poly_reg poly_reg.cpp)
 target_link_libraries(poly_reg PRIVATE fheco)
 
@@ -48,11 +49,11 @@ add_custom_target(copy_my_file_4poly_reg ALL
     DEPENDS ${SOURCE_FILE}
     COMMENT "Copying ${SOURCE_FILE_4} to ${DESTINATION_FILE_4}"
 )
-set(SOURCE_FILE_COMPILE_CUDA_poly_reg ${CMAKE_SOURCE_DIR}/benchmarks/poly_reg/compile_cuda.py)
-set(DESTINATION_FILE_COMPILE_CUDA_poly_reg ${CMAKE_SOURCE_DIR}/build/benchmarks/poly_reg/compile_cuda.py)
-add_custom_target(copy_compile_cuda_poly_reg ALL 
-    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_COMPILE_CUDA_poly_reg} ${DESTINATION_FILE_COMPILE_CUDA_poly_reg}
-    DEPENDS ${SOURCE_FILE_COMPILE_CUDA_poly_reg}
-    COMMENT "Copying ${SOURCE_FILE_COMPILE_CUDA_poly_reg} to ${DESTINATION_FILE_COMPILE_CUDA_poly_reg}"
-)
 
+set(SOURCE_FILE_HEONGPU_CMAKE_poly_reg ${CMAKE_SOURCE_DIR}/benchmarks/poly_reg/heongpu/CMakeLists.txt)
+set(DESTINATION_FILE_HEONGPU_CMAKE_poly_reg ${CMAKE_SOURCE_DIR}/build/benchmarks/poly_reg/heongpu/CMakeLists.txt)
+add_custom_target(copy_heongpu_cmake_poly_reg ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_HEONGPU_CMAKE_poly_reg} ${DESTINATION_FILE_HEONGPU_CMAKE_poly_reg}
+    DEPENDS ${SOURCE_FILE_HEONGPU_CMAKE_poly_reg}
+    COMMENT "Copying ${SOURCE_FILE_HEONGPU_CMAKE_poly_reg} to ${DESTINATION_FILE_HEONGPU_CMAKE_poly_reg}"
+)

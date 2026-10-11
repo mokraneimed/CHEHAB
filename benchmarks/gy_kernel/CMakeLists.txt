@@ -1,5 +1,6 @@
 
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/gy_kernel/he)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/gy_kernel/heongpu)
 add_executable(gy_kernel gy_kernel.cpp)
 target_link_libraries(gy_kernel PRIVATE fheco)
 
@@ -52,11 +53,11 @@ add_custom_target(copy_my_file_4gy_kernel ALL
     DEPENDS ${SOURCE_FILE}
     COMMENT "Copying ${SOURCE_FILE_4} to ${DESTINATION_FILE_4}"
 )
-set(SOURCE_FILE_COMPILE_CUDA_gy_kernel ${CMAKE_SOURCE_DIR}/benchmarks/gy_kernel/compile_cuda.py)
-set(DESTINATION_FILE_COMPILE_CUDA_gy_kernel ${CMAKE_SOURCE_DIR}/build/benchmarks/gy_kernel/compile_cuda.py)
-add_custom_target(copy_compile_cuda_gy_kernel ALL 
-    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_COMPILE_CUDA_gy_kernel} ${DESTINATION_FILE_COMPILE_CUDA_gy_kernel}
-    DEPENDS ${SOURCE_FILE_COMPILE_CUDA_gy_kernel}
-    COMMENT "Copying ${SOURCE_FILE_COMPILE_CUDA_gy_kernel} to ${DESTINATION_FILE_COMPILE_CUDA_gy_kernel}"
-)
 
+set(SOURCE_FILE_HEONGPU_CMAKE_gy_kernel ${CMAKE_SOURCE_DIR}/benchmarks/gy_kernel/heongpu/CMakeLists.txt)
+set(DESTINATION_FILE_HEONGPU_CMAKE_gy_kernel ${CMAKE_SOURCE_DIR}/build/benchmarks/gy_kernel/heongpu/CMakeLists.txt)
+add_custom_target(copy_heongpu_cmake_gy_kernel ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_HEONGPU_CMAKE_gy_kernel} ${DESTINATION_FILE_HEONGPU_CMAKE_gy_kernel}
+    DEPENDS ${SOURCE_FILE_HEONGPU_CMAKE_gy_kernel}
+    COMMENT "Copying ${SOURCE_FILE_HEONGPU_CMAKE_gy_kernel} to ${DESTINATION_FILE_HEONGPU_CMAKE_gy_kernel}"
+)

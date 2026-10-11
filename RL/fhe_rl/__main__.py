@@ -1,22 +1,8 @@
 import sys
 import argparse
-from pathlib import Path
-
-# Ensure RL root and pytrs are always in sys.path
-_rl_dir = Path(__file__).resolve().parent.parent
-if str(_rl_dir) not in sys.path:
-    sys.path.insert(0, str(_rl_dir))
-if str(_rl_dir / "pytrs") not in sys.path:
-    sys.path.insert(0, str(_rl_dir / "pytrs"))
-import importlib
-if "fhe_rl_new" not in sys.modules:
-    try:
-        sys.modules["fhe_rl_new"] = importlib.import_module("fhe_rl")
-    except Exception:
-        pass
 
 framework_parser = argparse.ArgumentParser(add_help=False)
-framework_parser.add_argument("--framework", choices=["constrained", "constrained_rl", "morl", "mo", "original", "original_rl"], default="constrained", help='Framework to use (default: constrained)')
+framework_parser.add_argument("--framework", choices=["constrained", "morl", "baseline"], default="constrained", help='Framework to use (default: constrained)')
 args, _ = framework_parser.parse_known_args()
 try:
     import pytrs.config
@@ -35,6 +21,7 @@ from .config import (
     get_model_path, get_tokenizer_type, 
     print_config, set_framework
 )
+from .baseline.run_baseline import run_agent as run_agent_baseline
 
 
 def parse_arguments(args=None):
@@ -208,8 +195,6 @@ def parse_arguments(args=None):
     run_parser.add_argument('input_expr_file', help='Input expression file')
     run_parser.add_argument('output_vector_file', help='Output vector file')
     run_parser.add_argument('--w_ops', type=float, default=0.5, help='Weight for execution time (operations). Must be between 0 and 1.')
-    run_parser.add_argument('--noise_budget', type=int, default=300, help='Noise budget for constrained RL (default: 300)')
-    run_parser.add_argument('--model', type=str, default=None, help='Custom path to model zip file')
 
     
     # Interactive command from MORL
@@ -242,13 +227,12 @@ def main(args=None):
     parsed_args = parse_arguments(args)
     
     # Configure framework
-    raw_fw = parsed_args.framework
-    if raw_fw in ("mo", "morl"):
+    if parsed_args.framework == "morl":
         framework_name = "mo"
-    elif raw_fw in ("original", "original_rl"):
-        framework_name = "original"
+    elif parsed_args.framework == "baseline":
+        framework_name = "baseline"
     else:
-        framework_name = "constrained"
+        framework_name = parsed_args.framework
     set_framework(framework_name)
     
     # Show configuration if requested
@@ -343,16 +327,15 @@ def main(args=None):
                 print("Error: w_ops must be between 0 and 1.")
                 sys.exit(1)
             parsed_args.w_keys = 1.0 - parsed_args.w_ops
-            agent_zip = parsed_args.model or get_model_path("mo_agent_model")
+            agent_zip = get_model_path("mo_agent_model")
             from .run_mo import run_agent_mo
             run_agent_mo(input_file, embeddings, agent_zip, output_file, w_ops=parsed_args.w_ops, w_keys=parsed_args.w_keys)
-        elif framework_name == "original":
-            agent_zip = parsed_args.model or get_model_path("agent_model")
-            run_agent(input_file, embeddings, agent_zip, output_file, noise_budget=9_000_000, framework="original")
+        elif framework_name == "baseline":
+            agent_zip = get_model_path("agent_model")
+            run_agent_baseline(input_file, embeddings, agent_zip, output_file)
         else:
-            # Constrained RL agent
-            agent_zip = parsed_args.model or get_model_path("constrained_agent_model")
-            run_agent(input_file, embeddings, agent_zip, output_file, noise_budget=parsed_args.noise_budget, framework="constrained")
+            agent_zip = get_model_path("agent_model")
+            run_agent(input_file, embeddings, agent_zip, output_file, noise_budget=300)
 
     elif mode == "interactive":
         run_interactive(mode=getattr(parsed_args, "interactive_mode", None))

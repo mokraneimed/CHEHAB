@@ -14,12 +14,22 @@ set(SOURCE_FILE_4 ${CMAKE_SOURCE_DIR}/RL/veclang_runner/he/CMakeLists.txt)
 set(DESTINATION_FILE_4 ${CMAKE_SOURCE_DIR}/build/RL/veclang_runner/he/CMakeLists.txt)
 
 set(SOURCE_FILE_5 ${CMAKE_SOURCE_DIR}/RL/veclang_runner/temp/fhe_io_example.txt)
+file(MAKE_DIRECTORY ${CMAKE_SOURCE_DIR}/RL/veclang_runner/temp)
+if(NOT EXISTS ${SOURCE_FILE_5})
+    file(TOUCH ${SOURCE_FILE_5})
+endif()
 set(DESTINATION_FILE_5 ${CMAKE_SOURCE_DIR}/build/RL/veclang_runner/fhe_io_example.txt)
 
 set(SOURCE_FILE_6 ${CMAKE_SOURCE_DIR}/RL/veclang_runner/temp/inputs.txt)
+if(NOT EXISTS ${SOURCE_FILE_6})
+    file(TOUCH ${SOURCE_FILE_6})
+endif()
 set(DESTINATION_FILE_6 ${CMAKE_SOURCE_DIR}/build/RL/inputs.txt)
 
 set(SOURCE_FILE_7 ${CMAKE_SOURCE_DIR}/RL/veclang_runner/temp/vectorized_code.txt)
+if(NOT EXISTS ${SOURCE_FILE_7})
+    file(TOUCH ${SOURCE_FILE_7})
+endif()
 set(DESTINATION_FILE_7 ${CMAKE_SOURCE_DIR}/build/RL/vectorized_code.txt)
 
 

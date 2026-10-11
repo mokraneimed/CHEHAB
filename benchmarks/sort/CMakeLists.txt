@@ -1,5 +1,6 @@
 
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/sort/he)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/sort/heongpu)
 add_executable(sort sort.cpp)
 target_link_libraries(sort PRIVATE fheco)
  
@@ -47,11 +48,11 @@ add_custom_target(copy_my_file_4sort ALL
     DEPENDS ${SOURCE_FILE}
     COMMENT "Copying ${SOURCE_FILE_4} to ${DESTINATION_FILE_4}"
 )
-set(SOURCE_FILE_COMPILE_CUDA_sort ${CMAKE_SOURCE_DIR}/benchmarks/sort/compile_cuda.py)
-set(DESTINATION_FILE_COMPILE_CUDA_sort ${CMAKE_SOURCE_DIR}/build/benchmarks/sort/compile_cuda.py)
-add_custom_target(copy_compile_cuda_sort ALL 
-    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_COMPILE_CUDA_sort} ${DESTINATION_FILE_COMPILE_CUDA_sort}
-    DEPENDS ${SOURCE_FILE_COMPILE_CUDA_sort}
-    COMMENT "Copying ${SOURCE_FILE_COMPILE_CUDA_sort} to ${DESTINATION_FILE_COMPILE_CUDA_sort}"
-)
 
+set(SOURCE_FILE_HEONGPU_CMAKE_sort ${CMAKE_SOURCE_DIR}/benchmarks/sort/heongpu/CMakeLists.txt)
+set(DESTINATION_FILE_HEONGPU_CMAKE_sort ${CMAKE_SOURCE_DIR}/build/benchmarks/sort/heongpu/CMakeLists.txt)
+add_custom_target(copy_heongpu_cmake_sort ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_HEONGPU_CMAKE_sort} ${DESTINATION_FILE_HEONGPU_CMAKE_sort}
+    DEPENDS ${SOURCE_FILE_HEONGPU_CMAKE_sort}
+    COMMENT "Copying ${SOURCE_FILE_HEONGPU_CMAKE_sort} to ${DESTINATION_FILE_HEONGPU_CMAKE_sort}"
+)

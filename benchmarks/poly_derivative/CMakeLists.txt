@@ -1,5 +1,6 @@
 
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/poly_derivative/he)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/poly_derivative/heongpu)
 add_executable(poly_derivative poly_derivative.cpp)
 target_link_libraries(poly_derivative PRIVATE fheco)
  
@@ -49,11 +50,11 @@ add_custom_target(copy_my_file_4poly_derivative ALL
     DEPENDS ${SOURCE_FILE}
     COMMENT "Copying ${SOURCE_FILE_4} to ${DESTINATION_FILE_4}"
 )
-set(SOURCE_FILE_COMPILE_CUDA_poly_derivative ${CMAKE_SOURCE_DIR}/benchmarks/poly_derivative/compile_cuda.py)
-set(DESTINATION_FILE_COMPILE_CUDA_poly_derivative ${CMAKE_SOURCE_DIR}/build/benchmarks/poly_derivative/compile_cuda.py)
-add_custom_target(copy_compile_cuda_poly_derivative ALL 
-    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_COMPILE_CUDA_poly_derivative} ${DESTINATION_FILE_COMPILE_CUDA_poly_derivative}
-    DEPENDS ${SOURCE_FILE_COMPILE_CUDA_poly_derivative}
-    COMMENT "Copying ${SOURCE_FILE_COMPILE_CUDA_poly_derivative} to ${DESTINATION_FILE_COMPILE_CUDA_poly_derivative}"
-)
 
+set(SOURCE_FILE_HEONGPU_CMAKE_poly_derivative ${CMAKE_SOURCE_DIR}/benchmarks/poly_derivative/heongpu/CMakeLists.txt)
+set(DESTINATION_FILE_HEONGPU_CMAKE_poly_derivative ${CMAKE_SOURCE_DIR}/build/benchmarks/poly_derivative/heongpu/CMakeLists.txt)
+add_custom_target(copy_heongpu_cmake_poly_derivative ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_HEONGPU_CMAKE_poly_derivative} ${DESTINATION_FILE_HEONGPU_CMAKE_poly_derivative}
+    DEPENDS ${SOURCE_FILE_HEONGPU_CMAKE_poly_derivative}
+    COMMENT "Copying ${SOURCE_FILE_HEONGPU_CMAKE_poly_derivative} to ${DESTINATION_FILE_HEONGPU_CMAKE_poly_derivative}"
+)

@@ -26,11 +26,11 @@ configure_file(
 )
 
 
-set(SOURCE_FILE_COMPILE_CUDA_conv2d ${CMAKE_SOURCE_DIR}/benchmarks/conv2d/compile_cuda.py)
-set(DESTINATION_FILE_COMPILE_CUDA_conv2d ${CMAKE_SOURCE_DIR}/build/benchmarks/conv2d/compile_cuda.py)
-add_custom_target(copy_compile_cuda_conv2d ALL 
-    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_COMPILE_CUDA_conv2d} ${DESTINATION_FILE_COMPILE_CUDA_conv2d}
-    DEPENDS ${SOURCE_FILE_COMPILE_CUDA_conv2d}
-    COMMENT "Copying ${SOURCE_FILE_COMPILE_CUDA_conv2d} to ${DESTINATION_FILE_COMPILE_CUDA_conv2d}"
-)
 
+set(SOURCE_FILE_HEONGPU_CMAKE_conv2d ${CMAKE_SOURCE_DIR}/benchmarks/conv2d/heongpu/CMakeLists.txt)
+set(DESTINATION_FILE_HEONGPU_CMAKE_conv2d ${CMAKE_SOURCE_DIR}/build/benchmarks/conv2d/heongpu/CMakeLists.txt)
+add_custom_target(copy_heongpu_cmake_conv2d ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_HEONGPU_CMAKE_conv2d} ${DESTINATION_FILE_HEONGPU_CMAKE_conv2d}
+    DEPENDS ${SOURCE_FILE_HEONGPU_CMAKE_conv2d}
+    COMMENT "Copying ${SOURCE_FILE_HEONGPU_CMAKE_conv2d} to ${DESTINATION_FILE_HEONGPU_CMAKE_conv2d}"
+)

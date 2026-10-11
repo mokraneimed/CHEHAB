@@ -3,7 +3,9 @@ import shutil
 import subprocess
 import csv
 import re
+import json
 import statistics
+from datetime import datetime
 from RL.fhe_rl.pareto import generate_pref_list
 
 # Specify the parent folder containing the benchmarks and build subfolders
@@ -73,6 +75,12 @@ regimes = ["50-50", "100-50"]
 number_instances_each_polynomial_configuration = 1
 compile_time_timeout_seconds = 7200
 output_csv = f"results_{'RL' if optimization_method == 1 else 'EGraph'}.csv"
+
+######################################
+# ── JSON log output for LLM analysis ──────────────────────────────────────────
+from llm_logger import LLMLogger
+llm_logger = LLMLogger(output_csv, optimization_method)
+
 
 ######################################
 with open(output_csv, mode="w", newline="") as file:
@@ -352,6 +360,20 @@ for subfolder_name in benchmark_folders:
                     with open(output_csv, mode="a", newline="") as file:
                         writer = csv.writer(file)
                         writer.writerow(row)
+                    ##########################################################################
+                    # ── Structured log entry for LLM analysis ─────────────────────────────
+                    ##########################################################################
+                    if not benchmark_compilation_timed_out:
+                        llm_logger.log_benchmark_run(
+                            bench_name=bench_name,
+                            benchmark_type="regular",
+                            w_ops=w_ops,
+                            w_keys=w_keys,
+                            operation_stats=operation_stats,
+                            operations=operations,
+                            slot_count=slot_count,
+                        )
+
                 except Exception as e:
                     print(f"Command for {subfolder_name} failed with error:\n{e}")
                     continue
@@ -623,6 +645,27 @@ for subfolder_name in polynomial_folders:
                         with open(output_csv, mode="a", newline="") as file:
                             writer = csv.writer(file)
                             writer.writerow(row)
+                        ##################################################################
+                        # ── Structured log entry for polynomial benchmarks ─────────────
+                        ##################################################################
+                        if not benchmark_compilation_timed_out:
+                            llm_logger.log_benchmark_run(
+                                bench_name=benchmark_name,
+                                benchmark_type="polynomial_tree",
+                                w_ops=w_ops,
+                                w_keys=w_keys,
+                                operation_stats=operation_stats,
+                                operations=operations,
+                                tree_depth=tree_depth,
+                                instance=instance,
+                                regime=regime,
+                            )
+
                     except Exception as e:
                         print(f"Command for {subfolder_name} failed with error:\n{e}")
                         continue
+
+# ══════════════════════════════════════════════════════════════════════════════════
+# ── Write the complete JSON log file for LLM consumption ─────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════════
+llm_logger.save_logs()

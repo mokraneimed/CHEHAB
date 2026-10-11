@@ -1,5 +1,6 @@
 
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/hamming_dist/he)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/hamming_dist/heongpu)
 add_executable(hamming_dist hamming_dist.cpp)
 target_link_libraries(hamming_dist PRIVATE fheco)
  
@@ -48,11 +49,11 @@ add_custom_target(copy_my_file_4hamming_dist ALL
     DEPENDS ${SOURCE_FILE}
     COMMENT "Copying ${SOURCE_FILE_4} to ${DESTINATION_FILE_4}"
 )
-set(SOURCE_FILE_COMPILE_CUDA_hamming_dist ${CMAKE_SOURCE_DIR}/benchmarks/hamming_dist/compile_cuda.py)
-set(DESTINATION_FILE_COMPILE_CUDA_hamming_dist ${CMAKE_SOURCE_DIR}/build/benchmarks/hamming_dist/compile_cuda.py)
-add_custom_target(copy_compile_cuda_hamming_dist ALL 
-    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_COMPILE_CUDA_hamming_dist} ${DESTINATION_FILE_COMPILE_CUDA_hamming_dist}
-    DEPENDS ${SOURCE_FILE_COMPILE_CUDA_hamming_dist}
-    COMMENT "Copying ${SOURCE_FILE_COMPILE_CUDA_hamming_dist} to ${DESTINATION_FILE_COMPILE_CUDA_hamming_dist}"
-)
 
+set(SOURCE_FILE_HEONGPU_CMAKE_hamming_dist ${CMAKE_SOURCE_DIR}/benchmarks/hamming_dist/heongpu/CMakeLists.txt)
+set(DESTINATION_FILE_HEONGPU_CMAKE_hamming_dist ${CMAKE_SOURCE_DIR}/build/benchmarks/hamming_dist/heongpu/CMakeLists.txt)
+add_custom_target(copy_heongpu_cmake_hamming_dist ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_HEONGPU_CMAKE_hamming_dist} ${DESTINATION_FILE_HEONGPU_CMAKE_hamming_dist}
+    DEPENDS ${SOURCE_FILE_HEONGPU_CMAKE_hamming_dist}
+    COMMENT "Copying ${SOURCE_FILE_HEONGPU_CMAKE_hamming_dist} to ${DESTINATION_FILE_HEONGPU_CMAKE_hamming_dist}"
+)

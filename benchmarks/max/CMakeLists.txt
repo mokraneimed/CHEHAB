@@ -1,5 +1,6 @@
 
 file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/max/he)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/max/heongpu)
 add_executable(max max.cpp)
 target_link_libraries(max PRIVATE fheco)
  
@@ -47,11 +48,11 @@ add_custom_target(copy_my_file_4max ALL
     DEPENDS ${SOURCE_FILE}
     COMMENT "Copying ${SOURCE_FILE_4} to ${DESTINATION_FILE_4}"
 )
-set(SOURCE_FILE_COMPILE_CUDA_max ${CMAKE_SOURCE_DIR}/benchmarks/max/compile_cuda.py)
-set(DESTINATION_FILE_COMPILE_CUDA_max ${CMAKE_SOURCE_DIR}/build/benchmarks/max/compile_cuda.py)
-add_custom_target(copy_compile_cuda_max ALL 
-    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_COMPILE_CUDA_max} ${DESTINATION_FILE_COMPILE_CUDA_max}
-    DEPENDS ${SOURCE_FILE_COMPILE_CUDA_max}
-    COMMENT "Copying ${SOURCE_FILE_COMPILE_CUDA_max} to ${DESTINATION_FILE_COMPILE_CUDA_max}"
-)
 
+set(SOURCE_FILE_HEONGPU_CMAKE_max ${CMAKE_SOURCE_DIR}/benchmarks/max/heongpu/CMakeLists.txt)
+set(DESTINATION_FILE_HEONGPU_CMAKE_max ${CMAKE_SOURCE_DIR}/build/benchmarks/max/heongpu/CMakeLists.txt)
+add_custom_target(copy_heongpu_cmake_max ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_HEONGPU_CMAKE_max} ${DESTINATION_FILE_HEONGPU_CMAKE_max}
+    DEPENDS ${SOURCE_FILE_HEONGPU_CMAKE_max}
+    COMMENT "Copying ${SOURCE_FILE_HEONGPU_CMAKE_max} to ${DESTINATION_FILE_HEONGPU_CMAKE_max}"
+)

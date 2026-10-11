@@ -1,4 +1,4 @@
-#include "fheco/ckks/ckks_params.hpp"
+﻿#include "fheco/ckks/ckks_params.hpp"
 #include "fheco/ckks/ckks_scale_manager.hpp"
 #include "fheco/code_gen/gen_func.hpp"
 #include "fheco/code_gen/gen_func_lattigo.hpp"
