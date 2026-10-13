@@ -254,35 +254,41 @@ def _train_lagrangian_loop(
 
         # ── Evaluate average noise on validation benchmarks ──────────────
         total_noise = 0
+        n_viol = 0
         for _ in range(num_benchmarks):
             obs = val_env.reset()
             done, ep_noise = False, 0
             while not done:
                 action, _ = model.predict(obs, deterministic=True)
                 obs, reward, done, info = val_env.step(action)
-                ep_noise = info[0].get("noise", 0.0)
+                ep_noise = info[0].get("constraint_value", 0.0)
             total_noise += ep_noise
+            n_viol += int(ep_noise > val_env.unwrapped.reset_infos[0]["budget"])
 
             # Update lambda on both train and val wrappers
             val_env.update_lambda_penalty(
-                noise=ep_noise,
+                constraint_value=ep_noise,
                 budget=val_env.unwrapped.reset_infos[0]["budget"],
             )
             env.update_lambda_penalty(
-                noise=ep_noise,
+                constraint_value=ep_noise,
                 budget=val_env.unwrapped.reset_infos[0]["budget"],
             )
 
         lambda_penalty = val_env.lambda_penalty
         avg_noise = total_noise / num_benchmarks
+        viol_rate = n_viol / num_benchmarks
 
-        print(f"[Step {model.num_timesteps}] Avg noise: {avg_noise:.2f}, "
+        print(f"[Step {model.num_timesteps}] Avg peak RAM: {avg_noise:.1f} MB, violation rate: {viol_rate:.2f}, "
               f"\u03bb: {lambda_penalty:.3f}")
         tensorboard_writer.add_scalar(
             "Lagrange/lambda_penalty", lambda_penalty, model.num_timesteps,
         )
         tensorboard_writer.add_scalar(
-            "Lagrange/avg_noise", avg_noise, model.num_timesteps,
+            "Lagrange/avg_peak_ram_mb", avg_noise, model.num_timesteps,
+        )
+        tensorboard_writer.add_scalar(
+            "Lagrange/violation_rate", viol_rate, model.num_timesteps,
         )
 
     tensorboard_writer.close()

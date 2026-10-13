@@ -1,0 +1,64 @@
+sampled 40 pilot expressions (G=0) from /home/maroua/chehab-unified/RL/veclang_runner/temp/pilot_results.csv
+
+  #      N   L    len  REAL  orig agent  match
+  0  16384   4     73     8     8     8  both
+  1  16384   4     95    10    10    10  both
+  2  16384   4    152    16    16    16  both
+  3  16384   8    172    19    19    19  both
+  4  16384   4    197    22    26    26  NEITHER
+  5  16384   4    229     6    24    24  NEITHER
+  6  16384   8    271    26    26    26  both
+  7  16384   4    277    33    38    38  NEITHER
+  8  16384   4    296    16    32    32  NEITHER
+  9  16384   4    313     9    36    36  NEITHER
+ 10  16384   4    333    10    40    40  NEITHER
+ 11  16384   4    341    32    32    32  both
+ 12  16384   4    363    29    39    39  NEITHER
+ 13  16384   4    455    38    54    54  NEITHER
+ 14  16384   5    472    48    48    48  both
+ 15  16384   4    481     4    64    64  NEITHER
+ 16  16384   4    567    20    54    54  NEITHER
+ 17  16384   4    604     8    64    64  NEITHER
+ 18  16384   4    633    33    66    66  NEITHER
+ 19  16384   4    689    15    72    72  NEITHER
+ 20  16384   4    761     8    72    72  NEITHER
+ 21  16384   4    905     6    96    96  NEITHER
+ 22  16384   5   1181    44   128   128  NEITHER
+ 23  16384   5   1381    16   128   128  NEITHER
+ 24  16384   7   1467   114   165   165  NEITHER
+ 25  16384   4   1625    16   200   200  NEITHER
+ 26  16384   4   1929     6   192   192  NEITHER
+ 27  16384   4   2109     8   256   256  NEITHER
+ 28  16384   4   2287    18   200   200  NEITHER
+ 29  16384   5   4197    16   400   400  NEITHER
+ 30  32768   9    312    37    41    41  NEITHER
+ 31  32768   9    480    59    64    64  NEITHER
+ 32  32768  10    536    67    70    70  NEITHER
+ 33  32768  10    790    96   101   101  NEITHER
+ 34  32768  10    954   108   121   121  NEITHER
+ 35  32768  13   1143   129   142   142  NEITHER
+ 36  32768   9   1553   157   192   192  NEITHER
+ 37  32768  10   1641   155   204   204  NEITHER
+ 38  32768  12   2087   200   250   250  NEITHER
+ 39  32768  13   2491   235   294   294  NEITHER
+
+SUMMARY: {'orig': 0, 'agent': 0, 'both': 7, 'neither': 33, 'fail': 0}
+  orig   = only the original (senior's) rule matches the real count
+  agent  = only the agent's rule matches
+  both   = the two rules agree and match (nothing to decide on those)
+  NEITHER= real count follows another rule; examples below
+
+  expr: (Vec (+ (* (+ a_5 b_5) (- c_5 d_5)) (- (* e_5 f_5) (+ g_5 h_5))) (- (+ i_5 (* j_5 k_5)) (* l_5 (- m_5 n_5))) (* (- o_5 (+ p_5 q_5)) (+ r_5 (* s_5 t_5)...
+  real=22 orig=26 agent=26  first labels: ['c0', 'c1', 'c10', 'c11', 'c12', 'c13']
+
+  expr: (Vec (* (+ a_0_0 b_0_0) (- c_0_0 (* d_0_0 (+ e_0_0 f_0_0)))) (* (+ a_0_1 b_0_1) (- c_0_1 (* d_0_1 (+ e_0_1 f_0_1)))) (* (+ a_0_2 b_0_2) (- c_0_2 (* d_...
+  real=6 orig=24 agent=24  first labels: ['c0', 'c1', 'c2', 'c3', 'c4', 'c5']
+
+  expr: (Vec (* (+ (- a_1 b_1) (* c_1 d_1)) (- e_1 f_1)) (- (* (+ a_2 b_2) c_2) (+ d_2 e_2)) (+ (* a_3 (- b_3 c_3)) (- d_3 e_3)) (* (- a_4 b_4) (+ c_4 d_4)) (...
+  real=33 orig=38 agent=38  first labels: ['c0', 'c1', 'c10', 'c11', 'c12', 'c13']
+
+  expr: (Vec (+ (+ (* (+ x1_1 x2_1) (+ x3_1 x4_1)) (* (+ x5_1 x6_1) (+ x7_1 x8_1))) (* (+ x9_1 x10_1) (+ x11_1 x12_1)) (* (+ x13_1 x14_1) (+ x15_1 x16_1))) (+...
+  real=16 orig=32 agent=32  first labels: ['c0', 'c1', 'c10', 'c11', 'c12', 'c13']
+
+  expr: (Vec (- (+ (* v1_0 v2_0) (* v3_0 (- v4_0 v5_0))) (* v6_0 (+ v7_0 (* v8_0 v9_0)))) (- (+ (* v1_1 v2_1) (* v3_1 (- v4_1 v5_1))) (* v6_1 (+ v7_1 (* v8_1 ...
+  real=9 orig=36 agent=36  first labels: ['c0', 'c1', 'c2', 'c3', 'c4', 'c5']

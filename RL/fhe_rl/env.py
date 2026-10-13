@@ -1,7 +1,8 @@
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
-from pytrs import parse_sexpr, calculate_cost, NoiseEstimator, expr_to_str
+from pytrs import parse_sexpr, calculate_cost, expr_to_str
+from .memory import MemoryEstimator
 import torch
 from .config import get_tokenizer_type
 
@@ -29,13 +30,13 @@ UNCONSTRAINED_BUDGET_THRESHOLD = 100_000
 
 
 class fheEnv(gym.Env):
-    DEFAULT_BUDGET_OPTIONS = [240, 300, 1_000_000]
+    DEFAULT_BUDGET_OPTIONS = [800, 1500, 2600, 1_000_000]   # peak-RAM budgets in MB (1_000_000 = unconstrained)
     
     def __init__(self, rules_list, expressions, max_positions=2, embeddings_model=None, budget_options=None, constraint_method="lagrangian_od_ov", verbose=True):
         super().__init__()
         self.rules = rules_list
         self.expressions = expressions
-        self.noise_estimator = NoiseEstimator()
+        self.noise_estimator = MemoryEstimator()   # name kept for compatibility: it now returns peak RAM in MB
         self.max_positions = max_positions
         self.embeddings_model = embeddings_model
         self.constraint_method = constraint_method
@@ -82,7 +83,11 @@ class fheEnv(gym.Env):
             budget = options.get("budget", budget)
         self.set_noise_budget(budget)
 
-        noise = self.noise_estimator.estimate(self.expression)
+        try:
+            memory_mb = float(self.noise_estimator.estimate(self.expression))
+        except Exception:      # estimator cannot handle this expression: take the next one
+            return self.reset(seed=seed, options=options)
+        self._last_value = memory_mb
 
         obs = {
             "observation": self._embed_expression(self.expression),
@@ -90,15 +95,15 @@ class fheEnv(gym.Env):
             "action_mask": self.get_action_mask(),
         }
         if self.constraint_method == "margin_barrier":
-            margin = np.clip((self.budget - noise) / max(self.budget, 1), -1.0, 1.0)
+            margin = np.clip((self.budget - memory_mb) / max(self.budget, 1), -1.0, 1.0)
             obs["budget_margin"] = np.array([margin], dtype=np.float32)
         if self.constraint_method == "nato_sc":
-            obs["noise_ratio"] = np.array([noise / max(self.budget, 1)], dtype=np.float32)
+            obs["noise_ratio"] = np.array([memory_mb / max(self.budget, 1)], dtype=np.float32)
 
         return obs, {
             "expression": self.expression,
             "budget": self.budget,
-            "noise": noise,
+            "constraint_value": memory_mb,
         }
 
 
@@ -138,7 +143,7 @@ class fheEnv(gym.Env):
         info = {
             "expression": self.expression,
             "budget": self.budget,
-            "noise": self.noise_estimator.estimate(self.expression),
+            "constraint_value": self._estimate(self.expression),
             "cost": self.current_cost,
         }
 
@@ -151,7 +156,7 @@ class fheEnv(gym.Env):
             print(f"{BOLD}{MAGENTA}Rule name     {RESET}: {CYAN}{rule_name}{RESET}")
             print(f"{BOLD}{MAGENTA}At position   {RESET}: {BLUE}{pos_idx}{RESET}")
             print(f"{BOLD}{MAGENTA}Budget         {RESET}: {YELLOW}{info['budget']}{RESET}")
-            print(f"{BOLD}{MAGENTA}Noise         {RESET}: {YELLOW}{info['noise']}{RESET}")
+            print(f"{BOLD}{MAGENTA}Peak RAM (MB){RESET}: {YELLOW}{info['constraint_value']}{RESET}")
             print(f"{CYAN}{'-'*100}{RESET}")
 
         embedding = self._embed_expression(self.expression)
@@ -164,27 +169,27 @@ class fheEnv(gym.Env):
 
         # ── Margin barrier: override terminal reward with hard penalty + utilization ──
         if self.constraint_method == "margin_barrier" and (terminated or truncated):
-            noise = info["noise"]
-            if noise > self.budget:
+            memory_mb = info["constraint_value"]
+            if memory_mb > self.budget:
                 reward = -100.0
             else:
                 cost_reward = self.calculate_final_reward()
                 if self.budget <= UNCONSTRAINED_BUDGET_THRESHOLD:
-                    utilization = noise / max(self.budget, 1)
+                    utilization = memory_mb / max(self.budget, 1)
                     reward = cost_reward + utilization * 5.0
                 else:
                     reward = cost_reward
 
         # ── NATO-SC: quadratic terminal penalty, allows intermediate violations ──
         if self.constraint_method == "nato_sc" and (terminated or truncated):
-            noise = info["noise"]
+            memory_mb = info["constraint_value"]
             cost_reward = self.calculate_final_reward()
-            if noise > self.budget:
-                violation_ratio = (noise - self.budget) / max(self.budget, 1)
+            if memory_mb > self.budget:
+                violation_ratio = (memory_mb - self.budget) / max(self.budget, 1)
                 reward = cost_reward - 50.0 * (violation_ratio ** 2)
             else:
                 if self.budget <= UNCONSTRAINED_BUDGET_THRESHOLD:
-                    utilization = noise / max(self.budget, 1)
+                    utilization = memory_mb / max(self.budget, 1)
                     reward = cost_reward + utilization * 5.0
                 else:
                     reward = cost_reward
@@ -202,13 +207,22 @@ class fheEnv(gym.Env):
             "action_mask": self.get_action_mask()
         }
         if self.constraint_method == "margin_barrier":
-            margin = np.clip((self.budget - info["noise"]) / max(self.budget, 1), -1.0, 1.0)
+            margin = np.clip((self.budget - info["constraint_value"]) / max(self.budget, 1), -1.0, 1.0)
             obs["budget_margin"] = np.array([margin], dtype=np.float32)
         if self.constraint_method == "nato_sc":
-            obs["noise_ratio"] = np.array([info["noise"] / max(self.budget, 1)], dtype=np.float32)
+            obs["noise_ratio"] = np.array([info["constraint_value"] / max(self.budget, 1)], dtype=np.float32)
 
         return obs, reward, terminated, truncated, info
     
+    def _estimate(self, expr):
+        """Peak RAM (MB) of expr; if the estimator fails on a rewritten expression, keep the previous value."""
+        try:
+            v = float(self.noise_estimator.estimate(expr))
+            self._last_value = v
+            return v
+        except Exception:
+            return getattr(self, "_last_value", 0.0)
+
     def _valid_end_action(self,expr: str) -> bool:
         expr_tree = parse_sexpr(expr)
         vectorization_potenial = self.vectorisation_potential(expr)

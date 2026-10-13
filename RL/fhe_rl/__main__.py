@@ -53,7 +53,7 @@ def parse_arguments(args=None):
         '--budgets',
         type=str,
         default=None,
-        help='Comma-separated list of noise budgets (e.g., "300,400,500,1000,9000000")'
+        help='Comma-separated list of peak-RAM budgets in MB (e.g., "800,1500,2600,1000000")'
     )
     train_parser.add_argument(
         '--timesteps',
@@ -149,7 +149,7 @@ def parse_arguments(args=None):
         '--budgets',
         type=str,
         default=None,
-        help='Comma-separated budgets to TEST on (e.g., "240,300,1000000")'
+        help='Comma-separated budgets to TEST on (e.g., "800,1500,2600,1000000")'
     )
     test_parser.add_argument(
         '--train_budgets',
@@ -335,7 +335,7 @@ def main(args=None):
             run_agent_baseline(input_file, embeddings, agent_zip, output_file)
         else:
             agent_zip = get_model_path("agent_model")
-            run_agent(input_file, embeddings, agent_zip, output_file, noise_budget=300)
+            run_agent(input_file, embeddings, agent_zip, output_file, noise_budget=1500)
 
     elif mode == "interactive":
         run_interactive(mode=getattr(parsed_args, "interactive_mode", None))

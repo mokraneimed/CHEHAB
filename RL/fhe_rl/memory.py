@@ -23,7 +23,7 @@ BACKEND = "cpu"                     # only Lattigo/CPU is supported for now
 MB = 1024.0 * 1024.0
 GALOIS_KEY_FACTOR = 1.20            # G>0 only; NOT validated on the pipeline
 CALIB_PATH = os.environ.get("PEAK_RAM_CALIB", os.path.join(_HERE, "memory_calib.json"))
-ESTIMATOR_VERSION = "calib-v1"
+ESTIMATOR_VERSION = "calib-v2-monotone"
 
 _calib = None
 _cache = {}
@@ -53,6 +53,27 @@ def _apply(group, net_mb, L, margin):
     return pred * (c["margin"] if margin else 1.0)
 
 
+def _raw_floor_mb(N, L, K, margin):
+    """Calibrated floor of an (almost) empty circuit, WITHOUT the monotone clamp."""
+    t = estimate_peak_memory(N, L, K, 0, 2 * ciphertext_bytes(N, L - 1), BACKEND)
+    return _apply(group_of(N), sum(t.values()) / MB, L, margin)
+
+
+# The N=16384 log-log fit extrapolates steeply in L (only 3 pilot rows at L=8), so its floor at
+# (16384, L=8) used to exceed the floor of (32768, L=9): predicted RAM could DROP when depth
+# crosses the N boundary, while measured RSS rises ~5x. Fix: any N>=32768 circuit is predicted
+# at least 1.05 x the largest N=16384 floor (the L=8 tier). Only affects the bottom of the
+# N=32768 distribution; conservative direction.
+_MONO_FACTOR = 1.05
+_MAX_L_16384 = 8
+
+
+def _lower_bound(group, margin):
+    if group == "32768":
+        return _MONO_FACTOR * _raw_floor_mb(16384, _MAX_L_16384, 2, margin)
+    return 0.0
+
+
 def peak_ram_breakdown(expr, margin=True):
     est = estimate_expression_memory(expr, BACKEND)
     p = est.params
@@ -60,8 +81,9 @@ def peak_ram_breakdown(expr, margin=True):
     non_key_mb = est.total_mb - gal_mb
     g = group_of(p.N)
     mult = _load()["groups"][g]["margin"] if margin else 1.0
-    pred = _apply(g, non_key_mb, p.L, margin) + gal_mb * GALOIS_KEY_FACTOR * mult
-    return dict(mb=pred, N=p.N, L=p.L, K=p.K, G=est.rotation_steps, group=g,
+    pred_raw = _apply(g, non_key_mb, p.L, margin) + gal_mb * GALOIS_KEY_FACTOR * mult
+    pred = max(pred_raw, _lower_bound(g, margin))
+    return dict(mb=pred, clamped=pred > pred_raw, N=p.N, L=p.L, K=p.K, G=est.rotation_steps, group=g,
                 raw_net_mb=est.total_mb, galois_mb=gal_mb, live_cts=est.peak_live_ciphertexts,
                 validated=(est.rotation_steps == 0))
 
@@ -80,5 +102,17 @@ def peak_ram_mb(expr, margin=True):
 
 def floor_mb(N, L, K, margin=True):
     """Memory of an (almost) empty circuit with these params: the smallest value a rewrite can reach."""
-    t = estimate_peak_memory(N, L, K, 0, 2 * ciphertext_bytes(N, L - 1), BACKEND)
-    return _apply(group_of(N), sum(t.values()) / MB, L, margin)
+    return max(_raw_floor_mb(N, L, K, margin), _lower_bound(group_of(N), margin))
+
+class MemoryEstimator:
+    """Drop-in replacement of NoiseEstimator: .estimate(expr_or_tree) -> peak RAM in MB.
+    Training uses margin=False (central estimate); keep the margin for deployment checks only."""
+
+    def __init__(self, margin=False):
+        self.margin = margin
+
+    def estimate(self, expr):
+        if not isinstance(expr, str):
+            from serializer import expr_to_str      # pytrs is on sys.path (see top of this file)
+            expr = expr_to_str(expr)
+        return peak_ram_mb(expr, margin=self.margin)

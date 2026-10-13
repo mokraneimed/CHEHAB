@@ -1,7 +1,8 @@
 from stable_baselines3 import PPO
 import sys, importlib, time
 from .utils import load_expressions, load_expressions_named, create_rules
-from pytrs import parse_sexpr, NoiseEstimator
+from pytrs import parse_sexpr
+from .memory import MemoryEstimator
 from .config import get_env_class, get_policy_class
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
@@ -13,7 +14,7 @@ def test_agent(
     expressions_file: str,
     embeddings_model,
     model_filepath: str,
-    noise_budget: int = 300,
+    noise_budget: int = 1500,
     budget_options: list = None,
     test_budgets: list = None,
     constraint_method: str = "lagrangian_od_ov",
@@ -74,7 +75,7 @@ def test_agent(
     model = PPO(policy=PolicyCls, env=env)
     sys.modules["fhe_rl_new"] = importlib.import_module("fhe_rl")
     model = model.load(model_filepath)
-    noise_estimator = NoiseEstimator()
+    noise_estimator = MemoryEstimator()
 
     all_results = []
 
@@ -110,7 +111,7 @@ def test_agent(
             terminal = infos[0]
             last_expr = terminal["expression"]
             last_cost = terminal["cost"]
-            final_noise = float(terminal["noise"])
+            final_noise = float(terminal["constraint_value"])
             cost_reduction = ((initial_cost - last_cost) / initial_cost * 100) if initial_cost > 0 else 0
             budget_violated = final_noise > budget
 
@@ -122,16 +123,16 @@ def test_agent(
                 "Initial Cost": initial_cost,
                 "Final Cost": last_cost,
                 "Cost Reduction (%)": round(cost_reduction, 2),
-                "Initial Noise": round(initial_noise, 2),
-                "Final Noise": round(final_noise, 2),
+                "Initial RAM (MB)": round(initial_noise, 2),
+                "Final RAM (MB)": round(final_noise, 2),
                 "Budget Violated": budget_violated,
-                "Noise Margin": round(budget - final_noise, 2),
+                "RAM Headroom (MB)": round(budget - final_noise, 2),
                 "Steps": steps,
             })
 
             status = "VIOLATED" if budget_violated else "OK"
             print(f"  [{status}] Expr {expr_idx+1}: cost {initial_cost}->{last_cost} "
-                  f"({cost_reduction:+.1f}%), noise {initial_noise:.0f}->{final_noise:.0f}, "
+                  f"({cost_reduction:+.1f}%), RAM {initial_noise:.0f}->{final_noise:.0f}, "
                   f"margin={budget - final_noise:.0f}")
 
     # ── Write results to Excel ──────────────────────────────────────────
@@ -154,10 +155,10 @@ def test_agent(
                 "Budget": budget,
                 "Num Expressions": len(bdf),
                 "Avg Cost Reduction (%)": round(bdf["Cost Reduction (%)"].mean(), 2),
-                "Avg Final Noise": round(bdf["Final Noise"].mean(), 2),
+                "Avg Final RAM (MB)": round(bdf["Final RAM (MB)"].mean(), 2),
                 "Violations": int(bdf["Budget Violated"].sum()),
                 "Violation Rate (%)": round(bdf["Budget Violated"].mean() * 100, 1),
-                "Avg Noise Margin": round(bdf["Noise Margin"].mean(), 2),
+                "Avg RAM Headroom (MB)": round(bdf["RAM Headroom (MB)"].mean(), 2),
                 "Avg Steps": round(bdf["Steps"].mean(), 1),
             })
         pd.DataFrame(summary_rows).to_excel(writer, sheet_name="summary_per_budget", index=False)
@@ -169,10 +170,10 @@ def test_agent(
     print(f"{'='*60}")
 
     # Print summary table
-    print(f"\n  {'Budget':>10}  {'Violations':>10}  {'Avg Cost Red%':>14}  {'Avg Noise':>10}")
+    print(f"\n  {'Budget':>10}  {'Violations':>10}  {'Avg Cost Red%':>14}  {'Avg RAM (MB)':>10}")
     print(f"  {'-'*50}")
     for s in summary_rows:
-        print(f"  {s['Budget']:>10}  {s['Violations']:>10}  {s['Avg Cost Reduction (%)']:>14.1f}  {s['Avg Final Noise']:>10.1f}")
+        print(f"  {s['Budget']:>10}  {s['Violations']:>10}  {s['Avg Cost Reduction (%)']:>14.1f}  {s['Avg Final RAM (MB)']:>10.1f}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -183,7 +184,7 @@ def test_agent_v2(
     expressions_file: str,
     embeddings_model,
     model_filepath: str,
-    noise_budget: int = 300,
+    noise_budget: int = 1500,
     budget_options: list = None,
     test_budgets: list = None,
     constraint_method: str = "nato_sc",
@@ -229,7 +230,7 @@ def test_agent_v2(
     model = PPO(policy=PolicyCls, env=env)
     sys.modules["fhe_rl_new"] = importlib.import_module("fhe_rl")
     model = model.load(model_filepath)
-    noise_estimator = NoiseEstimator()
+    noise_estimator = MemoryEstimator()
 
     all_results = []
 
@@ -278,7 +279,7 @@ def test_agent_v2(
                     terminal = infos[0]
                     cp_expr = terminal["expression"]
                     cp_cost = terminal["cost"]
-                    cp_noise = float(terminal["noise"])
+                    cp_noise = float(terminal["constraint_value"])
                 else:
                     cp_expr = fhe_env.expression
                     cp_cost = fhe_env.current_cost
@@ -323,22 +324,22 @@ def test_agent_v2(
                 "Expression Name": expr_name,
                 "Is Feasible": is_feasible,
                 "Initial Cost": initial_cost,
-                "Initial Noise": round(initial_noise, 2),
+                "Initial RAM (MB)": round(initial_noise, 2),
                 "Agent Final Cost": agent_final["cost"],
-                "Agent Final Noise": round(agent_final["noise"], 2),
+                "Agent Final RAM (MB)": round(agent_final["noise"], 2),
                 "Agent Cost Reduction (%)": round(agent_cr, 2),
                 "Agent Violated": agent_final["noise"] > budget,
                 "Safe Final Cost": safe_cost,
-                "Safe Final Noise": round(safe_noise, 2),
+                "Safe Final RAM (MB)": round(safe_noise, 2),
                 "Safe Cost Reduction (%)": round(safe_cr, 2),
                 "Safe Violated": safe_noise > budget,
                 "Safety Activated": safety_activated,
                 "Best Valid Step": best_valid_step,
                 "Total Steps": steps,
                 "RL Time (ms)": round(rl_time_ms, 1),
-                "Noise Margin": round(budget - safe_noise, 2),
+                "RAM Headroom (MB)": round(budget - safe_noise, 2),
                 "Trajectory Costs": "|".join(str(cp["cost"]) for cp in checkpoints),
-                "Trajectory Noises": "|".join(f'{cp["noise"]:.2f}' for cp in checkpoints),
+                "Trajectory RAM (MB)": "|".join(f'{cp["noise"]:.2f}' for cp in checkpoints),
                 "_safe_expr": safe_expr,
             })
 
@@ -378,7 +379,7 @@ def test_agent_v2(
                 "Safe Violations": int(bdf["Safe Violated"].sum()),
                 "Safe Violation Rate (%)": round(bdf["Safe Violated"].mean() * 100, 1),
                 "Safety Activations": int(bdf["Safety Activated"].sum()),
-                "Avg Noise Margin": round(bdf["Noise Margin"].mean(), 2),
+                "Avg RAM Headroom (MB)": round(bdf["RAM Headroom (MB)"].mean(), 2),
             })
         pd.DataFrame(summary_rows).to_excel(writer, sheet_name="summary_per_budget", index=False)
 
@@ -398,7 +399,7 @@ def test_agent_v2(
                 "Safe Violations": int(fdf["Safe Violated"].sum()),
                 "Safe Violation Rate (%)": round(fdf["Safe Violated"].mean() * 100, 1),
                 "Safety Activations": int(fdf["Safety Activated"].sum()),
-                "Avg Safe Noise Margin": round(fdf["Noise Margin"].mean(), 2),
+                "Avg Safe RAM Headroom (MB)": round(fdf["RAM Headroom (MB)"].mean(), 2),
             })
         if feasible_rows:
             pd.DataFrame(feasible_rows).to_excel(writer, sheet_name="feasible_summary", index=False)
@@ -413,9 +414,9 @@ def test_agent_v2(
                 "Budget": b,
                 "Infeasible Expressions": len(idf),
                 "Agent Avg Cost Red (%)": round(idf["Agent Cost Reduction (%)"].mean(), 2),
-                "Agent Avg Final Noise": round(idf["Agent Final Noise"].mean(), 2),
+                "Agent Avg Final RAM (MB)": round(idf["Agent Final RAM (MB)"].mean(), 2),
                 "Safe Avg Cost Red (%)": round(idf["Safe Cost Reduction (%)"].mean(), 2),
-                "Avg Noise Increase": round((idf["Agent Final Noise"] - idf["Initial Noise"]).mean(), 2),
+                "Avg RAM Increase (MB)": round((idf["Agent Final RAM (MB)"] - idf["Initial RAM (MB)"]).mean(), 2),
             })
         if infeasible_rows:
             pd.DataFrame(infeasible_rows).to_excel(writer, sheet_name="infeasible_summary", index=False)

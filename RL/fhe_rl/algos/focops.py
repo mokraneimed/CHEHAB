@@ -37,7 +37,7 @@ class ConstraintCostTracker(BaseCallback):
         for info in self.locals.get("infos", []):
             if "episode" not in info:
                 continue
-            noise = info.get("noise", 0.0)
+            noise = info.get("constraint_value", 0.0)
             budget = info.get("budget", 1)
             cost = max(0.0, (noise - budget) / max(budget, 1))
             self._costs.append(cost)

@@ -1,0 +1,20 @@
+[A] original (24c2e98) vs current estimator, every 10th line: 4425 lines
+    both ok: 4275 | both fail: 150 | only one fails: 0 []
+    max relative diff of total MB : 0.000000
+    different (N,L,K): 0 | different #rotations: 0 | different peak_live_ciphertexts (cosmetic field): 4272
+    -> if max diff ~0 and params equal, your edit did not change any memory number
+
+[B] prediction vs MEASURED peak RSS (pilot, G=0). 'signed' >0 = over-estimate, <0 = under-estimate
+    (calibrated rows are in-sample here; held-out numbers are printed from memory_calib.json below)
+  N-group 16384  (n=201)
+    raw estimator (senior)   p50|err|=  37.0%  p90|err|=  295.0%  median signed=   +0.2%  under-predicted= 49.8%
+    calibrated               p50|err|=  24.8%  p90|err|=   46.6%  median signed=   +6.5%  under-predicted= 48.3%
+    calibrated+margin        p50|err|=  62.7%  p90|err|=  116.2%  median signed=  +62.7%  under-predicted=  9.0%
+  N-group 32768  (n=96)
+    raw estimator (senior)   p50|err|=  37.0%  p90|err|=   42.3%  median signed=  -37.0%  under-predicted=100.0%
+    calibrated               p50|err|=   4.9%  p90|err|=   11.2%  median signed=   -0.0%  under-predicted= 51.0%
+    calibrated+margin        p50|err|=   9.2%  p90|err|=   19.2%  median signed=   +9.2%  under-predicted= 10.4%
+
+  held-out (grouped CV by expression, from fit_calib):
+    N-group 16384: model=loglog  p50|err|=26.0%  p90|err|=49.6%  margin=1.528
+    N-group 32768: model=ratio  p50|err|=4.9%  p90|err|=11.1%  margin=1.092

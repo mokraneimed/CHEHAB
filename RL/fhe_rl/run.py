@@ -8,7 +8,7 @@ from .config import get_env_class, get_policy_class
 from stable_baselines3.common.monitor import Monitor
 
 
-def run_agent(expressions_file: str, embeddings_model, model_filepath: str, output_file: str, noise_budget: int = 300, framework: str = "constrained"):
+def run_agent(expressions_file: str, embeddings_model, model_filepath: str, output_file: str, noise_budget: int = 1500, framework: str = "constrained"):
     start_time = time.perf_counter()
     expressions = load_expressions(expressions_file)
     if not len(expressions):

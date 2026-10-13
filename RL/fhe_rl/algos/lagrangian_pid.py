@@ -45,9 +45,9 @@ class PIDLagrangianWrapper(VecEnvWrapper):
         self._integral = 0.0
         self._prev_error = 0.0
 
-    def update_lambda_penalty(self, noise, budget):
+    def update_lambda_penalty(self, constraint_value, budget):
         """PID update for the dual variable."""
-        error = (noise - budget) / max(budget, 1)
+        error = (constraint_value - budget) / max(budget, 1)
         self._integral = float(np.clip(self._integral + error, -10.0, 10.0))
         derivative = error - self._prev_error
         delta = self.Kp * error + self.Ki * self._integral + self.Kd * derivative
@@ -64,10 +64,10 @@ class PIDLagrangianWrapper(VecEnvWrapper):
         for env_idx, info in enumerate(infos):
             if not dones[env_idx]:
                 continue
-            noise = info.get("noise", 0.0)
+            value = info.get("constraint_value", 0.0)
             budget = info.get("budget", 1)
-            delta = noise - budget
+            delta = 100.0 * (value - budget) / max(budget, 1)   # relative violation, percent
             if delta > 0:
                 rewards[env_idx] -= self.lambda_penalty * delta
-            self.update_lambda_penalty(noise, budget)
+            self.update_lambda_penalty(value, budget)
         return obs, rewards, dones, infos
