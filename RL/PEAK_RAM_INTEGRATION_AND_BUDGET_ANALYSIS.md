@@ -8,7 +8,7 @@ During this integration, two fundamental issues have emerged:
 1. **The Mapping Issue**: The empirical profiling dataset provided for memory (`memory_estimator_stats_dataset.csv`) contains measured peak memory values starting around ~800 MB and extending to ~3 GB. However, it does not include the raw S-expressions corresponding to each row (only operation counts and depth). Consequently, exact row-by-row verification between the expressions in the training dataset (`final_llm_dataset.txt`) and the measured memory values is impossible.
 2. **The Scale & Budget Discrepancy**: The analytical closed-form estimator provided for CKKS (`ckks_memory_estimator.py`) outputs peak memory values in the range of ~20 MB to ~200 MB (median ~67 MB) on expressions from `final_llm_dataset.txt`. Because of the gap between the measured dataset (~800 MB - 3 GB) and the analytical model (~20 MB - 200 MB), setting appropriate budget thresholds for Lagrangian RL training is ambiguous.
 
-This document details the background, technical implementation, proposed memory metrics, data evidence, and open architectural questions for external review.
+This document details the background, technical implementation, proposed memory metrics, data evidence, the exact step-by-step integration blueprint, and open architectural questions for external review.
 
 ---
 
@@ -210,44 +210,203 @@ To facilitate root-cause analysis when an expression violates budget or when ana
 
 ---
 
-## 8. Architecture of the Integration in `RL/fhe_rl/`
+## 8. Detailed Step-by-Step Integration Guide (Implementation Blueprint)
 
-The integration is designed to remain clean, modular, and non-destructive:
+For future reference and execution, here is the exact, file-by-file blueprint to integrate the peak memory estimator into Imed's unified RL codebase:
 
-### 1. `RL/pytrs/ckks_memory_estimator.py`
-Standalone file containing the closed-form model. Exported via `RL/pytrs/__init__.py`.
+### Step 1: Export in PyTRS (`RL/pytrs/__init__.py`)
+Ensure both estimators are exported side-by-side:
+```python
+from noise_estimator import NoiseEstimator
+from ckks_memory_estimator import (
+    CKKSMemoryEstimator,
+    estimate_expression_memory,
+    estimate_peak_memory,
+    chehab_params,
+)
+```
 
-### 2. Device Auto-Detection
+### Step 2: Auto-Detection Helper
+In `RL/fhe_rl/env.py` (or a utility module), auto-detect hardware availability:
 ```python
 import torch
 
 def get_default_backend() -> str:
     return "gpu" if torch.cuda.is_available() else "cpu"
 ```
-Supports CLI flags: `--backend auto` (default), `--backend gpu`, `--backend cpu`.
 
-### 3. Dual Constraint Support in `RL/fhe_rl/env.py`
-New parameter in `fheEnv`: `constraint_metric: str = "memory"` (choices: `"memory"`, `"noise"`).
-- If `constraint_metric == "memory"`:
-  - Active estimator: `CKKSMemoryEstimator(backend=backend)`
-  - Default budgets: Configurable via CLI `--budgets`
-- If `constraint_metric == "noise"`:
-  - Active estimator: `NoiseEstimator()` (legacy code fully preserved)
-  - Default budgets: `[240, 300, 1000000]`
-- Environment step/reset returns:
-  `info["constraint_value"] = current_val`
-  `info["memory"] = memory_val`
-  `info["noise"] = noise_val`
-
-### 4. Backward-Compatible Wrappers in `RL/fhe_rl/wrappers.py`
-Lagrangian wrappers compute:
+### Step 3: Dual-Metric Environment (`RL/fhe_rl/env.py`)
+Modify `fheEnv.__init__` to accept the constraint configuration:
 ```python
-delta = info.get("constraint_value", info.get("memory", info.get("noise", 0.0))) - info["budget"]
-```
-Works identically regardless of whether memory or noise is active.
+def __init__(
+    self,
+    rules_list,
+    expressions,
+    max_positions=2,
+    embeddings_model=None,
+    budget_options=None,
+    constraint_method="lagrangian_od_ov",
+    constraint_metric="memory",  # "memory" or "noise"
+    backend="auto",             # "auto", "gpu", or "cpu"
+    verbose=True,
+):
+    super().__init__()
+    self.constraint_metric = constraint_metric
+    self.backend = get_default_backend() if backend == "auto" else backend
+    
+    # Initialize both estimators; select active one based on metric
+    self.noise_estimator = NoiseEstimator()
+    self.memory_estimator = CKKSMemoryEstimator(backend=self.backend)
 
-### 5. Evaluation & Test Reporting in `RL/fhe_rl/test.py`
-Implements the metrics defined in Section 7 above, conditionally switching table formatting based on `--constraint_metric`.
+    # Set default budget options and unconstrained threshold
+    if budget_options is not None:
+        self.budget_options = budget_options
+    else:
+        if self.constraint_metric == "memory":
+            self.budget_options = [50, 70, 150, 100_000]
+        else:
+            self.budget_options = [240, 300, 1_000_000]
+            
+    self.unconstrained_threshold = (
+        10_000 if self.constraint_metric == "memory" else 100_000
+    )
+    ...
+```
+
+In `env.reset()` and `env.step()`:
+Compute both values to ensure downstream compatibility, and assign `constraint_value`:
+```python
+mem_val = float(self.memory_estimator.estimate(self.expression))
+noise_val = float(self.noise_estimator.estimate(self.expression))
+current_val = mem_val if self.constraint_metric == "memory" else noise_val
+
+info = {
+    "expression": self.expression,
+    "budget": self.budget,
+    "constraint_value": current_val,
+    "memory": mem_val,
+    "noise": noise_val,
+    "cost": self.current_cost,
+}
+```
+
+Update terminal penalties (`margin_barrier` and `nato_sc`):
+```python
+if current_val > self.budget:
+    # apply penalty based on constraint_value
+```
+
+In `env.get_action_mask()`:
+```python
+use_mask = (
+    self.constraint_method in ("noise_masking", "memory_masking")
+    and self.budget is not None
+    and self.budget < self.unconstrained_threshold
+)
+if use_mask:
+    for pos_idx in range(valid_positions):
+        k, _ = matches[pos_idx]
+        try:
+            new_tree = rule_obj.apply_rule(parsed, path=k)
+            est = (
+                self.memory_estimator.estimate(new_tree)
+                if self.constraint_metric == "memory"
+                else self.noise_estimator.estimate(new_tree)
+            )
+            if est <= self.budget:
+                mask[start + pos_idx] = 1.0
+        except Exception:
+            pass
+```
+
+### Step 4: Lagrangian Wrappers (`RL/fhe_rl/wrappers.py`)
+Ensure all Lagrangian wrapper classes calculate `delta` generically:
+```python
+def step_wait(self):
+    obs, rewards, dones, infos = self.venv.step_wait()
+    for env_index, info in enumerate(infos):
+        val = info.get("constraint_value", info.get("memory", info.get("noise", 0.0)))
+        delta = val - info["budget"]
+        ON_DONE, ON_VIOLATION = dones[env_index], delta > 0
+        if ON_DONE and ON_VIOLATION:
+            rewards[env_index] = rewards[env_index] - (self.lambda_penalty * delta)
+    return obs, rewards, dones, infos
+```
+
+In `BaseLagrangianWrapper.update_lambda_penalty`:
+```python
+def update_lambda_penalty(self, constraint_val, budget):
+    if constraint_val > budget:
+        self.lambda_penalty += 0.01 * (constraint_val - budget)
+    else:
+        self.lambda_penalty = max(0, self.lambda_penalty - 0.01)
+```
+
+### Step 5: Training Loop (`RL/fhe_rl/train.py`)
+In the validation evaluation loop of `_train_lagrangian_loop`:
+```python
+total_constraint = 0
+for _ in range(num_benchmarks):
+    obs = val_env.reset()
+    done, ep_val = False, 0
+    while not done:
+        action, _ = model.predict(obs, deterministic=True)
+        obs, reward, done, info = val_env.step(action)
+        ep_val = info[0].get("constraint_value", info[0].get("noise", 0.0))
+    total_constraint += ep_val
+
+    val_env.update_lambda_penalty(
+        constraint_val=ep_val,
+        budget=val_env.unwrapped.reset_infos[0]["budget"],
+    )
+    env.update_lambda_penalty(
+        constraint_val=ep_val,
+        budget=val_env.unwrapped.reset_infos[0]["budget"],
+    )
+
+avg_val = total_constraint / num_benchmarks
+metric_name = "peak_memory_mb" if getattr(env, "constraint_metric", "memory") == "memory" else "noise"
+tensorboard_writer.add_scalar(f"Lagrange/avg_{metric_name}", avg_val, model.num_timesteps)
+tensorboard_writer.add_scalar("Lagrange/lambda_penalty", val_env.lambda_penalty, model.num_timesteps)
+```
+
+### Step 6: Evaluation Script (`RL/fhe_rl/test.py`)
+Format the evaluation tables using Section 7's 7 metrics when `constraint_metric == "memory"`, while retaining the legacy format when `constraint_metric == "noise"`.
+Ensure the rollback checkpoint selector checks:
+```python
+valid_checkpoints = [cp for cp in checkpoints if cp["constraint_value"] <= budget]
+```
+
+### Step 7: CLI Entry Point (`RL/fhe_rl/__main__.py`)
+Add the flags to argument parsers:
+```python
+parser.add_argument(
+    '--constraint_metric',
+    type=str,
+    default='memory',
+    choices=['memory', 'noise'],
+    help='Constraint target to enforce: "memory" (default, CKKS peak RAM in MB) or "noise" (legacy)'
+)
+parser.add_argument(
+    '--backend',
+    type=str,
+    default='auto',
+    choices=['auto', 'gpu', 'cpu'],
+    help='Backend for memory estimation (default: auto)'
+)
+```
+Set dynamic default budgets if `--budgets` is omitted:
+- If `--constraint_metric memory`: default `"50,70,150,100000"`
+- If `--constraint_metric noise`: default `"240,300,1000000"`
+
+### Step 8: Smoke Test Verification Protocol
+Run these commands to confirm full end-to-end integration:
+1. **Unit Test**: Test estimator with simple expressions (`test_ckks_memory_estimator.py`).
+2. **Environment Reset & Step**: Confirm `fheEnv` steps without NaNs or crashes.
+3. **Short 1,000-Step Training Run**:
+   ```bash
+   python -m fhe_rl train --constraint_metric memory --backend auto --budgets "50,70,100000" --timesteps 1000 --num_envs 2
+   ```
 
 ---
 
