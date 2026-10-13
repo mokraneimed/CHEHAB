@@ -868,7 +868,9 @@ func (s *RamMemSampler) Stop() {
 		galoisElements[i] = params.GaloisElement(r)
 	}
 
+	galoisKeysStart := time.Now()
 	gks := kgen.GenGaloisKeysNew(galoisElements, sk)
+	keys_elapsed := float64(time.Since(galoisKeysStart).Microseconds()) / 1000.0
 
 	var galois_keys_total_size int
 	for _, gk := range gks {
@@ -994,7 +996,8 @@ func (s *RamMemSampler) Stop() {
   os << "\t\t" << func_name;
   os << R"((encryptedInputs, encodedInputs, encryptedOutputs, encodedOutputs, encoder, enc, eval, params)
 	}
-	computeMillis := float64(time.Since(computeStart).Microseconds()) / 1000.0 / float64(*repetitions)
+  elapsed := float64(time.Since(computeStart).Microseconds()) / 1000.0
+  computeMillis := elapsed / float64(*repetitions)
 	decryptStart := time.Now()
 	maxAbsError := 0.0
 	for name, ct := range encryptedOutputs {
@@ -1030,4 +1033,3 @@ func (s *RamMemSampler) Stop() {
 }
 
 } // namespace fheco::code_gen::lattigo
-
