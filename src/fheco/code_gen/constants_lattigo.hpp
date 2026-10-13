@@ -59,6 +59,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
@@ -80,6 +81,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
@@ -102,6 +104,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"

@@ -1,0 +1,28 @@
+estimated 44249 expressions in 34s
+failed: 1575
+
+Calibrated peak RAM (MB, with margin), percentiles [0, 5, 25, 50, 75, 90, 95, 100]
+ all     n=42674 : [ 100.  101.  101.  102.  103.  902. 1621. 4850.]
+ N=16384  n=36661 : [100. 101. 101. 102. 103. 103. 143. 415.]
+ N=32768  n=6012 : [ 328.  486.  849. 1257. 1967. 2698. 3139. 4850.]
+ N=65536  n=1 : [3527. 3527. 3527. 3527. 3527. 3527. 3527. 3527.]
+ G>0 (unvalidated) n=0
+
+Candidate tiers (quantile -> budget, share of circuits ABOVE it):
+ p25  budget 101 MB: violated by 73% | floor already above budget for 20.8%
+ p50  budget 102 MB: violated by 49% | floor already above budget for 20.8%
+ p75  budget 103 MB: violated by 24% | floor already above budget for 20.8%
+
+Floor per (N,L,K) [MB] and count:
+  (16384, 4, 2) 100 MB 33796 exprs
+  (16384, 5, 2) 142 MB 2180 exprs
+  (16384, 6, 2) 200 MB 492 exprs
+  (16384, 7, 2) 282 MB 153 exprs
+  (16384, 8, 2) 397 MB 40 exprs
+  (32768, 9, 2) 235 MB 2009 exprs
+  (32768, 10, 2) 260 MB 1202 exprs
+  (32768, 11, 2) 298 MB 600 exprs
+  (32768, 12, 2) 325 MB 500 exprs
+  (32768, 13, 2) 366 MB 1000 exprs
+  (32768, 14, 2) 396 MB 701 exprs
+  (65536, 13, 2) 733 MB 1 exprs

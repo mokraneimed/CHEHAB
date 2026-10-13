@@ -191,6 +191,14 @@ void gen_primitive_reference_go(const shared_ptr<ir::Func> &func, ostream &os)
     for (const auto &label : output.second.labels_)
       os << "\texpectedOutputs[\"" << label << "\"] = " << ref << "\n";
   }
+
+  // Mark every declared reference as used. Input copies (all identical
+  // append(values) buffers) may be shadowed by alias terms that operations
+  // consume instead, leaving the original ref unread -- a Go
+  // "declared and not used" compile error. Same idiom as the `_ = cN`
+  // statements in the FHE body. No allocation is added or removed.
+  for (const auto &[id, ref] : references)
+    os << "\t_ = " << ref << "\n";
 }
 
 } // namespace
@@ -624,10 +632,20 @@ void gen_op_terms_go(
     }
     else if (term->op_code().type() == ir::OpCode::Type::negate)
     {
-      // Negate: eval.NegNew(ct)
+      // Negate via Sub: eval.NegNew does not exist in Lattigo v5 hefloat.
+      // out = Sub(in, in) -> zero, then out = Sub(out, in) -> -in.
       os << "\t";
       gen_cipher_var_id_go(term_object_id, os);
-      os << ", _ = eval.NegNew(";
+      os << ", _ = eval.SubNew(";
+      gen_cipher_var_id_go(operands_ctxt_objects_ids[0], os);
+      os << ", ";
+      gen_cipher_var_id_go(operands_ctxt_objects_ids[0], os);
+      os << ")\n";
+      os << "\t";
+      gen_cipher_var_id_go(term_object_id, os);
+      os << ", _ = eval.SubNew(";
+      gen_cipher_var_id_go(term_object_id, os);
+      os << ", ";
       gen_cipher_var_id_go(operands_ctxt_objects_ids[0], os);
       os << ")\n";
     }
@@ -756,6 +774,15 @@ void gen_main_go(
   }
 
   os << R"(
+func getMaxRSS() uint64 {
+	var ru syscall.Rusage
+	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &ru); err == nil {
+		// Linux reports ru.Maxrss in kilobytes.
+		return uint64(ru.Maxrss) * 1024
+	}
+	return 0
+}
+
 func getCurrentRSS() uint64 {
 	if data, err := os.ReadFile("/proc/self/statm"); err == nil {
 		fields := strings.Fields(string(data))
@@ -856,6 +883,7 @@ func (s *RamMemSampler) Stop() {
   os << "\t}\n\n";
   
   os << R"(	// Key Generation
+	keygenStart := time.Now()
 	kgen := rlwe.NewKeyGenerator(params)
 	sk := kgen.GenSecretKeyNew()
 	pk := kgen.GenPublicKeyNew(sk)
@@ -932,6 +960,8 @@ func (s *RamMemSampler) Stop() {
     os << "\tfmt.Println(\"Bootstrap keys generated successfully!\")\n";
   }
   
+  os << "\tkeys_elapsed := float64(time.Since(keygenStart).Microseconds()) / 1000.0\n";
+
   os << R"(
 	// Deterministic inputs and timing setup.
 	repetitions := flag.Int("repetitions", 1, "number of encrypted inference repetitions")
@@ -1018,6 +1048,7 @@ func (s *RamMemSampler) Stop() {
      << R"(,\"level_start\":%d,\"level_end\":%d,\"max_abs_error\":%s,\"precision_checked\":%t}\n",
 		*repetitions, encryptMillis, computeMillis, decryptMillis, len(galoisElements), params.MaxLevel(), levelsEnd, maxAbsErrorJSON, precisionChecked)
 	_ = encodedOutputs
+	elapsed := computeMillis
 	fmt.Printf("circuit_execution_time_(ms): %f\n", elapsed)
 	fmt.Printf("galois_keys_generation_time_(ms): %f\n", keys_elapsed)
 	fmt.Printf("total_execution_time_(ms): %f\n", elapsed+keys_elapsed)
@@ -1025,6 +1056,7 @@ func (s *RamMemSampler) Stop() {
 
 	sampler.Stop()
 	fmt.Printf("peak_ram_memory_(MB): %f\n", float64(sampler.peakUsed.Load())/(1024.0*1024.0))
+	fmt.Printf("max_rss_(MB): %f\n", float64(getMaxRSS())/(1024.0*1024.0))
 }
 )";
 }

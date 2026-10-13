@@ -122,6 +122,21 @@ class VeclangRunner:
                 self._stats["Remaining_noise_budget"] = int(line.split()[1])
 
     def _parse_lattigo_outputs(self, stdout: str) -> None:
+        # BENCHMARK_METRICS JSON line: repetitions/encrypt/compute/decrypt ms,
+        # galois_keys, bootstrap_count, level_start/end, max_abs_error,
+        # precision_checked.
+        metrics_match = re.search(r"BENCHMARK_METRICS\s+(\{[^\n]+\})", stdout)
+        if metrics_match:
+            import json
+            try:
+                metrics = json.loads(metrics_match.group(1))
+            except ValueError:
+                metrics = {}
+            for key in ["repetitions", "encrypt_ms", "compute_ms", "decrypt_ms",
+                        "galois_keys", "bootstrap_count", "level_start",
+                        "level_end", "max_abs_error", "precision_checked"]:
+                if key in metrics:
+                    self._stats[key] = metrics[key]
         for line in stdout.splitlines():
             for key in ["keygen_ms", "encrypt_ms", "eval_ms", "bootstrap_ms",
                         "decrypt_ms", "total_ms", "precision_bits", "abs_error"]:
@@ -131,6 +146,34 @@ class VeclangRunner:
                         self._stats[key] = float(val)
                     except ValueError:
                         self._stats[key] = val
+            # Timing lines emitted by generated Go main():
+            #   circuit_execution_time_(ms): <f>
+            #   galois_keys_generation_time_(ms): <f>
+            #   total_execution_time_(ms): <f>
+            for ms_key in ["circuit_execution_time_(ms)",
+                           "galois_keys_generation_time_(ms)",
+                           "total_execution_time_(ms)"]:
+                if ms_key in line:
+                    try:
+                        self._stats[ms_key.replace("_(ms)", "_ms")] = float(line.split()[1])
+                    except (IndexError, ValueError):
+                        pass
+            # Rotation key size + polled peak (secondary) + kernel MaxRSS (primary).
+            if "rotation_keys_size_(MB):" in line:
+                try:
+                    self._stats["rotation_keys_size_MB"] = float(line.split()[1])
+                except (IndexError, ValueError):
+                    pass
+            if "peak_ram_memory_(MB):" in line:
+                try:
+                    self._stats["peak_ram_polled_MB"] = float(line.split()[1])
+                except (IndexError, ValueError):
+                    pass
+            if "max_rss_(MB):" in line:
+                try:
+                    self._stats["max_rss_MB"] = float(line.split()[1])
+                except (IndexError, ValueError):
+                    pass
 
     def _parse_generated_cpp_file(self, file_content: str) -> None:
         for op in VeclangRunner.OPERATIONS:
@@ -139,3 +182,41 @@ class VeclangRunner:
     def _parse_generated_go_file(self, file_content: str) -> None:
         for op in VeclangRunner.LATTIGO_OPERATIONS:
             self._stats[f"lattigo_{op}"] = len(re.findall(rf"\b{op}", file_content))
+        # --- Amendment 3: parameter check (flagged, not silent) ---
+        # Parse N/L/K + rotation steps from the generated Go so the pilot can
+        # compare them with what the estimator chose (chehab_params + G).
+        logn = re.search(r"LogN:\s*(\d+)", file_content)
+        if logn:
+            self._stats["go_LogN"] = int(logn.group(1))
+            self._stats["go_N"] = 1 << int(logn.group(1))
+        logq = re.search(r"LogQ:\s*\[\]int\{([^}]*)\}", file_content)
+        if logq:
+            nums = [t.strip() for t in logq.group(1).split(",") if t.strip()]
+            self._stats["go_L"] = len(nums)
+        logp = re.search(r"LogP:\s*\[\]int\{([^}]*)\}", file_content)
+        if logp:
+            nums = [t.strip() for t in logp.group(1).split(",") if t.strip()]
+            self._stats["go_K"] = len(nums)
+        maxlevel = re.search(r"MaxLevel=(\d+)", file_content)
+        if maxlevel:
+            self._stats["go_MaxLevel"] = int(maxlevel.group(1))
+        rot = re.search(r"return \[\]int\{([^}]*)\}", file_content)
+        if rot:
+            steps = [t.strip() for t in rot.group(1).split(",") if t.strip()]
+            try:
+                self._stats["go_rotation_steps"] = [int(s) for s in steps]
+            except ValueError:
+                self._stats["go_rotation_steps"] = steps
+            self._stats["go_G"] = len(self._stats["go_rotation_steps"])
+        # Reference/precision path audit (Amendment 2): record whether the
+        # plaintext reference (ref_*/expectedOutputs, precisionChecked=true)
+        # was generated, so its allocation can be accounted for.
+        self._stats["go_precision_checked"] = (
+            "precisionChecked = true" in file_content
+        )
+        self._stats["go_has_expected_outputs"] = (
+            "expectedOutputs" in file_content
+        )
+        self._stats["go_has_ref_arrays"] = bool(
+            re.search(r"\bref_\d+\b", file_content)
+        )

@@ -1,0 +1,14 @@
+
+=== N=16384  n=201  distinct exprs=139 ===
+raw estimator: median rss/est = 1.00 | p10 0.25 | p90 1.60
+ ratio      p50 abs  37.3% | p90 abs  299.3% | median signed    0.8% | under-rate  49% | margin p90 1.60 (p95 1.69), coverage 91% | worst under -48.2%
+ affine_nn  p50 abs  36.2% | p90 abs   97.5% | median signed   21.0% | under-rate  39% | margin p90 1.61 (p95 2.27), coverage 90% | worst under -76.1%
+ loglog     p50 abs  26.0% | p90 abs   49.6% | median signed    6.4% | under-rate  47% | margin p90 1.53 (p95 1.80), coverage 90% | worst under -63.7%
+ most extreme rss/est rows (est, rss, depth, len): [(284, 54, 2, 2109), (284, 54, 2, 2109), (535, 87, 3, 4197), (535, 87, 3, 4197), (348, 55, 1, 3329)]
+
+=== N=32768  n=96  distinct exprs=58 ===
+raw estimator: median rss/est = 1.59 | p10 1.46 | p90 1.73
+ ratio      p50 abs   4.9% | p90 abs   11.1% | median signed   -0.0% | under-rate  51% | margin p90 1.09 (p95 1.12), coverage 90% | worst under -14.9%
+ affine_nn  p50 abs   5.4% | p90 abs   11.8% | median signed    0.3% | under-rate  48% | margin p90 1.09 (p95 1.12), coverage 91% | worst under -15.4%
+ loglog     p50 abs   5.4% | p90 abs   11.5% | median signed    0.1% | under-rate  49% | margin p90 1.10 (p95 1.12), coverage 90% | worst under -16.3%
+ most extreme rss/est rows (est, rss, depth, len): [(806, 1439, 10, 841), (806, 1439, 10, 841), (666, 1191, 11, 568), (1160, 2162, 8, 1700), (1160, 2162, 8, 1700)]

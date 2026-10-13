@@ -117,6 +117,14 @@ class _Liveness:
         self.rotations = set()
         self.root = self._visit(expr)
 
+    def _input_set(self):
+        """Deduplicated input ciphertext keys used by peak() / peak_bytes."""
+        return sorted(set(self.inputs))
+
+    def _compressed_input_count(self, N: int) -> int:
+        """Full-slot ciphertexts the codegen actually encrypts (distinct names)."""
+        return len(self._input_set())
+
     def _visit(self, node: Expr):
         if isinstance(node, Const):
             return None
@@ -131,7 +139,15 @@ class _Liveness:
             if all(isinstance(a, Const) for a in node.args):
                 return None
             self.nodes[key] = ([], self.top)
-            self.inputs.append(key)
+            # The codegen encrypts ONE ciphertext per DISTINCT input name (the
+            # same values buffer is re-encoded and re-encrypted for every
+            # Var in the Vec). Count distinct input names, not Vec-scalar
+            # references, to match encryptedInputs below in gen_func.cpp.
+            seen = set()
+            for a in node.args:
+                if isinstance(a, Var):
+                    seen.add(a.name)
+            self.inputs.extend(seen)
             return key
         children = [self._visit(a) for a in node.args]
         cts = [ch for ch in children if ch is not None]
@@ -176,11 +192,18 @@ def estimate_expression_memory(
     if params is None:
         params = chehab_params(get_multiplicative_depth(expr))
     live = _Liveness(expr, top_level=params.L - 1)
+    # Consolidated live-ct count: one full-slot ciphertext per distinct input
+    # name (the codegen's encryptedInputs). Flattened so liveness and the
+    # estimator's own peak/ct count agree with the codegen.
+    consolidated_cts = live._compressed_input_count(params.N) if \
+        hasattr(live, "_compressed_input_count") else live.inputs
     # HEonGPU keeps a ciphertext's top-level buffer after rescaling; Lattigo shrinks it.
     peak_cts, peak_bytes = live.peak(params.N, level_aware=(backend == "cpu"))
-    terms = estimate_peak_memory(params.N, params.L, params.K, len(live.rotations), peak_bytes, backend)
+    terms = estimate_peak_memory(params.N, params.L, params.K,
+                                 len(live.rotations), peak_bytes, backend)
     galois = len(live.rotations) + (1 if backend == "gpu" and live.rotations else 0)
-    return MemoryEstimate(params, len(live.rotations), galois, peak_cts, terms)
+    return MemoryEstimate(params, len(live.rotations), galois,
+                          consolidated_cts, terms)
 
 
 class CKKSMemoryEstimator:
