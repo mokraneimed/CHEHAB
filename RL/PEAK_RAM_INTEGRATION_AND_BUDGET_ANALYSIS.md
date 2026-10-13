@@ -8,7 +8,7 @@ During this integration, two fundamental issues have emerged:
 1. **The Mapping Issue**: The empirical profiling dataset provided for memory (`memory_estimator_stats_dataset.csv`) contains measured peak memory values starting around ~800 MB and extending to ~3 GB. However, it does not include the raw S-expressions corresponding to each row (only operation counts and depth). Consequently, exact row-by-row verification between the expressions in the training dataset (`final_llm_dataset.txt`) and the measured memory values is impossible.
 2. **The Scale & Budget Discrepancy**: The analytical closed-form estimator provided for CKKS (`ckks_memory_estimator.py`) outputs peak memory values in the range of ~20 MB to ~200 MB (median ~67 MB) on expressions from `final_llm_dataset.txt`. Because of the gap between the measured dataset (~800 MB - 3 GB) and the analytical model (~20 MB - 200 MB), setting appropriate budget thresholds for Lagrangian RL training is ambiguous.
 
-This document details the background, technical implementation, data evidence, and open architectural questions for external review.
+This document details the background, technical implementation, proposed memory metrics, data evidence, and open architectural questions for external review.
 
 ---
 
@@ -154,7 +154,63 @@ The selection of `--budgets` directly dictates what the agent learns:
 
 ---
 
-## 7. Architecture of the Integration in `RL/fhe_rl/`
+## 7. Proposed Evaluation & Debugging Metrics for Memory
+
+In the legacy implementation (`RL/fhe_rl/test.py`), the summary tables reported:
+- `Initial Noise`
+- `Final Noise`
+- `Noise Margin (Budget - Final Noise)`
+
+### Why "Initial vs Final" Does Not Apply to Peak RAM
+Noise was modeled as a resource that decreases/accumulates as multiplications and rescalings occur along the execution depth of a single evaluation. 
+
+In contrast, **Peak RAM is a global static property of the compiled program graph**. During RL optimization, the agent applies rewrite rules (e.g., vectorization, associativity, factorizations) to transform an unoptimized expression into an optimized expression.
+- Vectorization reduces total operations, but introduces **Galois rotation keys** (each key requiring several megabytes).
+- Re-association or common subexpression elimination (CSE) can either increase or decrease the **peak count of live ciphertexts**.
+
+Therefore, the evaluation must capture whether the optimization caused a **memory explosion** or **remained within hardware headroom**, alongside detailed component breakdowns.
+
+### 1. Main Evaluation Table Metrics
+For benchmark and held-out evaluation reports:
+
+1. **Unoptimized Peak RAM (MB)**:
+   The peak memory of the initial, raw input expression.
+2. **Optimized Peak RAM (MB)**:
+   The peak memory of the final rewritten expression selected by the RL agent.
+3. **RAM Expansion / Overhead (%)**:
+   `RAM_Expansion = ((Optimized_RAM - Unoptimized_RAM) / Unoptimized_RAM) * 100`
+   - Indicates whether the rewrites bloated memory (positive %) or compressed memory (negative %).
+4. **Target Budget (MB)**:
+   The active hardware constraint (e.g., 70 MB or 1100 MB).
+5. **Headroom / Slack (MB)**:
+   `Headroom = Budget - Optimized_RAM`
+   - Positive (+): The circuit fits on the target hardware with remaining memory headroom.
+   - Negative (-): Out of Memory (OOM) violation.
+6. **Cost Reduction (%)**:
+   `Cost_Reduction = ((Initial_Cost - Optimized_Cost) / Initial_Cost) * 100`
+   - The primary optimization reward (latency / operation cost reduction).
+7. **Feasibility Status**:
+   `FEASIBLE` (if `Optimized_RAM <= Budget`) or `VIOLATED (OOM)`.
+
+### 2. Diagnostic & Component Breakdown Metrics (Per Expression)
+To facilitate root-cause analysis when an expression violates budget or when analyzing Pareto trade-offs, `estimate_expression_memory(expr, backend)` provides:
+
+1. **Galois Rotation Keys Memory (MB)**:
+   Memory occupied by rotation keys: `G * SWK` (on GPU: `(G + 1) * SWK`).
+2. **Distinct Rotation Steps (`G`)**:
+   Count of distinct non-zero rotation shifts introduced by vectorization rewrites.
+3. **Live Ciphertexts Memory (MB)**:
+   Working memory occupied by intermediate ciphertexts at the peak liveness point.
+4. **Peak Live Ciphertexts Count**:
+   The maximum number of simultaneous ciphertexts held in memory during the post-order evaluation DAG.
+5. **Context & Scratch Memory (MB)**:
+   Evaluator baseline overhead: public/secret keys + context structures + key-switching scratchpad.
+6. **Selected Parameters (`N`, `L`, `K`)**:
+   Polynomial ring dimension $N$, level modulus chain length $L$, and special modulus count $K$.
+
+---
+
+## 8. Architecture of the Integration in `RL/fhe_rl/`
 
 The integration is designed to remain clean, modular, and non-destructive:
 
@@ -191,22 +247,15 @@ delta = info.get("constraint_value", info.get("memory", info.get("noise", 0.0)))
 Works identically regardless of whether memory or noise is active.
 
 ### 5. Evaluation & Test Reporting in `RL/fhe_rl/test.py`
-Replaces the misleading "Initial vs Final Noise" columns for memory evaluation with:
-- `Unoptimized Peak RAM (MB)`
-- `Optimized Peak RAM (MB)`
-- `RAM Expansion (%)`: `((Optimized - Unoptimized) / Unoptimized) * 100`
-- `Target Budget (MB)`
-- `Headroom (MB)`: `Budget - Optimized Peak RAM`
-- `Cost Reduction (%)`: Latency / operation count reduction
-- `Status`: `FEASIBLE` or `OOM`
-- Component Breakdown: Galois Keys (MB), Live Ciphertexts (MB), Context & Scratch (MB).
+Implements the metrics defined in Section 7 above, conditionally switching table formatting based on `--constraint_metric`.
 
 ---
 
-## 8. Specific Questions for Review
+## 9. Specific Questions for Review
 
 1. **Estimator Interpretation**: Should the RL agent be constrained on the **Net FHE Cryptographic Footprint** (20–200 MB as modeled by Mounir's closed-form DAG estimator) or on **Gross Process Resident Set Size** (800 MB–3 GB as measured by process RSS in `memory_estimator_stats_dataset.csv`)?
 2. **Budget Calibration**:
    - If using Net FHE footprint: Are percentile-based tiers like `[50, 70, 150, 100000]` MB appropriate?
    - If using Gross Process RSS: Should a constant baseline (e.g. ~770 MB) be formally added to the analytical estimator to match the CSV's scale?
 3. **Validation Strategy**: Given that `memory_estimator_stats_dataset.csv` does not record the input expression strings, what is the recommended protocol to validate the closed-form estimator against ground-truth execution?
+4. **Metrics Alignment**: Do the proposed memory metrics (Unoptimized vs. Optimized RAM, Expansion %, Headroom, and component breakdown of keys vs. live ciphertexts) sufficiently capture what is needed to benchmark memory-constrained circuit rewriting?
