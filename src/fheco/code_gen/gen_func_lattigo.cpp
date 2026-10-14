@@ -560,8 +560,6 @@ void gen_op_terms_go(
       os << ", ";
       gen_cipher_var_id_go(term_object_id, os);
       os << ")\n";
-      if (!hoisted_inputs.empty())
-        os << "\tlastDecompID = -1\n";
     }
     else if (term->op_code().type() == ir::OpCode::Type::rescale)
     {
@@ -689,17 +687,13 @@ void gen_op_terms_go(
       
       os << ")\n";
       
-      // Every CKKS multiplication raises the scale. A plaintext operand does
-      // not remove that requirement, so normalize both multiplication forms.
-      if (op_name == "MulRelin" || op_name == "Mul")
+      if (op_name == "MulRelin")
       {
         os << "\t_ = eval.Rescale(";
         gen_cipher_var_id_go(term_object_id, os);
         os << ", ";
         gen_cipher_var_id_go(term_object_id, os);
         os << ")\n";
-        if (!hoisted_inputs.empty())
-          os << "\tlastDecompID = -1\n";
       }
     }
   }

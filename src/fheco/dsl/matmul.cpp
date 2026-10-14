@@ -99,6 +99,13 @@ Tensor matmul(const Tensor &input, const PlaintextMatrix &matrix)
     if (first_group) { accumulator = result; first_group = false; }
     else accumulator = accumulator + result;
   }
+  if (matrix.fold_count() > 0)
+  {
+    int block_height = slots >> matrix.fold_count();
+    for (int step = block_height; step < slots; step <<= 1)
+      accumulator = accumulator + (accumulator << step);
+  }
+  accumulator = rescale(accumulator);
   return Tensor(accumulator, matrix.output_shape(), matrix.layout());
 }
 

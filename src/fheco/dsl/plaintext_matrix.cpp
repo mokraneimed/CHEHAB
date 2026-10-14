@@ -16,18 +16,19 @@ void validate_common(int height, int width, int kernel, int stride, int channels
 }
 
 PlaintextMatrix PlaintextMatrix::from_conv2d(
-  const vector<vector<double>> &kernel, Conv2dParams params, int total_slots)
+  const vector<vector<double>> &kernel, Conv2dParams params, int total_slots, bool is_last_layer)
 {
   if (kernel.size() != static_cast<size_t>(params.kernel_size) || kernel.empty() ||
       kernel.front().size() != static_cast<size_t>(params.kernel_size))
     throw invalid_argument("kernel dimensions must match kernel_size");
   vector<vector<vector<vector<double>>>> expanded(
     params.channels_out, vector<vector<vector<double>>>(params.channels_in, kernel));
-  return from_conv2d(expanded, params, total_slots);
+  return from_conv2d(expanded, params, total_slots, is_last_layer);
 }
 
 PlaintextMatrix PlaintextMatrix::from_conv2d(
-  const vector<vector<vector<vector<double>>>> &kernel, Conv2dParams params, int total_slots)
+  const vector<vector<vector<vector<double>>>> &kernel, Conv2dParams params, int total_slots,
+  bool is_last_layer)
 {
   validate_common(params.image_height, params.image_width, params.kernel_size, params.stride,
                   params.channels_in, total_slots);
@@ -42,6 +43,18 @@ PlaintextMatrix PlaintextMatrix::from_conv2d(
   const int w_out = (params.image_width + 2 * params.padding - params.kernel_size) / params.stride + 1;
   if (h_out <= 0 || w_out <= 0)
     throw invalid_argument("convolution kernel does not fit input");
+
+  const int output_size = params.channels_out * h_out * w_out;
+  int block_height = total_slots;
+  int fold_count = 0;
+  if (!is_last_layer && output_size < total_slots)
+  {
+    block_height = 1;
+    while (block_height < output_size) block_height <<= 1;
+    int R = total_slots / block_height;
+    int tmp = R;
+    while (tmp > 1) { ++fold_count; tmp >>= 1; }
+  }
 
   unordered_map<int, vector<double>> diagonals;
   const auto in_slot = [&](int channel, int row, int col) {
@@ -74,10 +87,25 @@ PlaintextMatrix PlaintextMatrix::from_conv2d(
                   plane[kernel_row].size() != static_cast<size_t>(params.kernel_size))
                 throw invalid_argument("kernel dimensions must match kernel_size");
               const int input = in_slot(input_channel, row_in, col_in);
-              const int diagonal = ((input - output) % total_slots + total_slots) % total_slots;
-              auto &values = diagonals[diagonal];
-              if (values.empty()) values.assign(total_slots, 0.0);
-              values[output] += plane[kernel_row][kernel_col];
+              const double w = plane[kernel_row][kernel_col];
+              if (w == 0.0) continue;
+              if (fold_count > 0)
+              {
+                const int d = ((input - output) % block_height + block_height) % block_height;
+                const int q = ((input - output) % total_slots + total_slots) % total_slots;
+                const int m = q / block_height;
+                const int k = output + m * block_height;
+                auto &values = diagonals[d];
+                if (values.empty()) values.assign(total_slots, 0.0);
+                values[k] += w;
+              }
+              else
+              {
+                const int diagonal = ((input - output) % total_slots + total_slots) % total_slots;
+                auto &values = diagonals[diagonal];
+                if (values.empty()) values.assign(total_slots, 0.0);
+                values[output] += w;
+              }
             }
           }
       }
@@ -85,7 +113,7 @@ PlaintextMatrix PlaintextMatrix::from_conv2d(
   return PlaintextMatrix(move(diagonals), total_slots,
                          TensorShape{static_cast<size_t>(params.channels_out),
                                      static_cast<size_t>(h_out), static_cast<size_t>(w_out)},
-                         params.layout);
+                         params.layout, fold_count);
 }
 
 PlaintextMatrix PlaintextMatrix::from_pool(PoolParams params, int total_slots)
@@ -131,26 +159,65 @@ PlaintextMatrix PlaintextMatrix::from_pool(PoolParams params, int total_slots)
 }
 
 PlaintextMatrix PlaintextMatrix::from_dense(
-  const vector<vector<double>> &weights, int total_slots, PackingLayout layout)
+  const vector<vector<double>> &weights, int total_slots, PackingLayout layout, bool is_last_layer)
 {
   if (weights.empty() || weights.front().empty() || total_slots <= 0)
     throw invalid_argument("dense weights and slots must not be empty");
+  const int output_size = static_cast<int>(weights.size());
   const int input_size = static_cast<int>(weights.front().size());
   unordered_map<int, vector<double>> diagonals;
-  for (int output = 0; output < static_cast<int>(weights.size()); ++output)
+
+  int block_height = total_slots;
+  int fold_count = 0;
+  if (!is_last_layer && output_size < total_slots)
   {
-    if (static_cast<int>(weights[output].size()) != input_size)
-      throw invalid_argument("dense weight rows must have equal size");
-    for (int input = 0; input < input_size; ++input)
+    block_height = 1;
+    while (block_height < output_size) block_height <<= 1;
+    int R = total_slots / block_height;
+    int tmp = R;
+    while (tmp > 1) { ++fold_count; tmp >>= 1; }
+  }
+
+  if (fold_count > 0)
+  {
+    for (int d = 0; d < block_height; ++d)
     {
-      if (weights[output][input] == 0.0) continue;
-      const int diagonal = ((input - output) % total_slots + total_slots) % total_slots;
-      auto &values = diagonals[diagonal];
-      if (values.empty()) values.assign(total_slots, 0.0);
-      values[output] += weights[output][input];
+      vector<double> values(total_slots, 0.0);
+      bool has_nonzero = false;
+      for (int k = 0; k < total_slots; ++k)
+      {
+        int r = k % block_height;
+        int c = (d + k) % total_slots;
+        if (r < output_size && c < input_size)
+        {
+          double val = weights[r][c];
+          if (val != 0.0)
+          {
+            values[k] = val;
+            has_nonzero = true;
+          }
+        }
+      }
+      if (has_nonzero) diagonals[d] = values;
+    }
+  }
+  else
+  {
+    for (int output = 0; output < output_size; ++output)
+    {
+      if (static_cast<int>(weights[output].size()) != input_size)
+        throw invalid_argument("dense weight rows must have equal size");
+      for (int input = 0; input < input_size; ++input)
+      {
+        if (weights[output][input] == 0.0) continue;
+        const int diagonal = ((input - output) % total_slots + total_slots) % total_slots;
+        auto &values = diagonals[diagonal];
+        if (values.empty()) values.assign(total_slots, 0.0);
+        values[output] += weights[output][input];
+      }
     }
   }
   return PlaintextMatrix(move(diagonals), total_slots,
-                         TensorShape{1, 1, weights.size()}, layout);
+                         TensorShape{1, 1, weights.size()}, layout, fold_count);
 }
 } // namespace fheco

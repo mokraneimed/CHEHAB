@@ -77,15 +77,13 @@ void build_cryptonets(int slots)
 void build_lola(int slots)
 {
   Tensor image("image", TensorShape{1, 28, 28});
-  PlaintextMatrix::Conv2dParams conv1_params{28, 28, 5, 2, 0, 1, 5};
-  Tensor conv1 = matmul(image, PlaintextMatrix::from_conv2d(conv_weights(5, 1, 5), conv1_params, slots));
+  PlaintextMatrix::Conv2dParams conv1_params{28, 28, 2, 2, 0, 1, 5};
+  Tensor conv1 = matmul(image, PlaintextMatrix::from_conv2d(conv_weights(5, 1, 2), conv1_params, slots, false));
   Tensor act1 = poly_activate(conv1, {0, 0, 1});
 
-  // Dense 1: 720 -> 100
-  Tensor dense1 = matmul(act1, PlaintextMatrix::from_dense(dense_weights(100, 720), slots));
+  Tensor dense1 = matmul(act1, PlaintextMatrix::from_dense(dense_weights(100, 980), slots, PackingLayout::ROW_MAJOR, false));
   Tensor act2 = poly_activate(dense1, {0, 0, 1});
 
-  // Dense 2: 100 -> 10
   matmul(act2, PlaintextMatrix::from_dense(dense_weights(10, 100), slots)).set_output("classification");
 }
 
@@ -95,8 +93,8 @@ void build_lola(int slots)
 void build_mlp(int slots)
 {
   Tensor input("input", TensorShape{1, 1, 784});
-  Tensor layer1 = poly_activate(matmul(input, PlaintextMatrix::from_dense(dense_weights(128, 784), slots)), {0, 0, 1});
-  Tensor layer2 = poly_activate(matmul(layer1, PlaintextMatrix::from_dense(dense_weights(128, 128), slots)), {0, 0, 1});
+  Tensor layer1 = poly_activate(matmul(input, PlaintextMatrix::from_dense(dense_weights(128, 784), slots, PackingLayout::ROW_MAJOR, false)), {0, 0, 1});
+  Tensor layer2 = poly_activate(matmul(layer1, PlaintextMatrix::from_dense(dense_weights(128, 128), slots, PackingLayout::ROW_MAJOR, false)), {0, 0, 1});
   matmul(layer2, PlaintextMatrix::from_dense(dense_weights(10, 128), slots)).set_output("classification");
 }
 
@@ -168,7 +166,7 @@ void build_alexnet(int slots)
   Tensor p3_out = matmul(c5_out, PlaintextMatrix::from_pool(p3, slots));
 
   // FC1 + FC2
-  Tensor fc1 = poly_activate(matmul(p3_out, PlaintextMatrix::from_dense(dense_weights(64, 32), slots)), {0, 0, 1});
+  Tensor fc1 = poly_activate(matmul(p3_out, PlaintextMatrix::from_dense(dense_weights(64, 32), slots, PackingLayout::ROW_MAJOR, false)), {0, 0, 1});
   matmul(fc1, PlaintextMatrix::from_dense(dense_weights(10, 64), slots)).set_output("classification");
 }
 
