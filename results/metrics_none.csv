@@ -1,6 +1,6 @@
 benchmark,backend,repetitions,dsl_generation_ms,encrypt_ms,compute_ms,decrypt_ms,total_measured_ms,rotation_keys,bootstrap_count,level_start,level_end,levels_consumed,max_abs_error,precision_checked,run_status,generated_file,error_message
-conv2d,lattigo,1,7.9554,12.189,386.217,9.364,407.77,14,0,3,2,1,1.40075902787e-07,True,SUCCESS,C:\Users\Nazne\PFE\CHEHAB\Merged_Framework_2\CHEHAB\build\benchmarks\dnn_tensor\he\tensor_conv2d_auto.go,
-full_dnn,lattigo,1,16.73,8.519,987.883,0.0,996.402,25,0,3,0,3,100900.0,True,SUCCESS,C:\Users\Nazne\PFE\CHEHAB\Merged_Framework_2\CHEHAB\build\benchmarks\dnn_tensor\he\tensor_full_dnn_auto.go,
-cryptonets,lattigo,1,14.0736,16.991,941.12,1.005,959.116,21,0,3,0,3,6669723.32603,True,SUCCESS,C:\Users\Nazne\PFE\CHEHAB\Merged_Framework_2\CHEHAB\build\benchmarks\dnn_tensor\he\tensor_cryptonets_auto.go,
-mlp,lattigo,1,534.683,6.959,2902.474,1.337,2910.77,59,0,5,0,5,20065.2718598,True,SUCCESS,C:\Users\Nazne\PFE\CHEHAB\Merged_Framework_2\CHEHAB\build\benchmarks\dnn_tensor\he\tensor_mlp_auto.go,
-lola,lattigo,1,536.886,7.005,5619.562,1.014,5627.581,71,0,5,0,5,3019459.54439,True,SUCCESS,C:\Users\Nazne\PFE\CHEHAB\Merged_Framework_2\CHEHAB\build\benchmarks\dnn_tensor\he\tensor_lola_auto.go,
+conv2d,lattigo,1,10.2629,9.515,390.936,10.056,410.507,11,0,3,2,1,1.58059579203e-07,True,SUCCESS,C:\Users\Nazne\PFE\CHEHAB\Merged_Framework_2\CHEHAB\build\benchmarks\dnn_tensor\he\tensor_conv2d_auto.go,
+full_dnn,lattigo,1,33.6071,10.435,1180.903,0.519,1191.857,14,0,3,0,3,252.25,True,SUCCESS,C:\Users\Nazne\PFE\CHEHAB\Merged_Framework_2\CHEHAB\build\benchmarks\dnn_tensor\he\tensor_full_dnn_auto.go,
+cryptonets,lattigo,1,31.2393,9.988,965.441,0.52,975.949,14,0,3,0,3,0.00311442940548,True,SUCCESS,C:\Users\Nazne\PFE\CHEHAB\Merged_Framework_2\CHEHAB\build\benchmarks\dnn_tensor\he\tensor_cryptonets_auto.go,
+mlp,lattigo,1,698.336,6.28,3223.852,2.003,3232.135,20,0,5,0,5,0.004048294115,True,SUCCESS,C:\Users\Nazne\PFE\CHEHAB\Merged_Framework_2\CHEHAB\build\benchmarks\dnn_tensor\he\tensor_mlp_auto.go,
+lola,lattigo,1,938.604,7.368,6152.346,1.206,6160.92,21,0,5,0,5,0.00365999844155,True,SUCCESS,C:\Users\Nazne\PFE\CHEHAB\Merged_Framework_2\CHEHAB\build\benchmarks\dnn_tensor\he\tensor_lola_auto.go,

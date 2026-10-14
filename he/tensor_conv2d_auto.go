@@ -4,6 +4,11 @@ import (
 	"flag"
 	"fmt"
 	"math"
+	"os"
+	"runtime"
+	"strconv"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/tuneinsight/lattigo/v5/core/rlwe"
@@ -2373,14 +2378,69 @@ func tensor_conv2d(
 }
 
 
+func getCurrentRSS() uint64 {
+	if data, err := os.ReadFile("/proc/self/statm"); err == nil {
+		fields := strings.Fields(string(data))
+		if len(fields) >= 2 {
+			if resident, err := strconv.ParseUint(fields[1], 10, 64); err == nil {
+				return resident * uint64(os.Getpagesize())
+			}
+		}
+	}
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	return m.Sys
+}
+
+type RamMemSampler struct {
+	running  atomic.Bool
+	peakUsed atomic.Uint64
+	done     chan struct{}
+}
+
+func newRamMemSampler() *RamMemSampler {
+	return &RamMemSampler{
+		done: make(chan struct{}),
+	}
+}
+
+func (s *RamMemSampler) Start() {
+	s.peakUsed.Store(0)
+	s.running.Store(true)
+	go func() {
+		defer close(s.done)
+		for s.running.Load() {
+			used := getCurrentRSS()
+			for {
+				prev := s.peakUsed.Load()
+				if used <= prev {
+					break
+				}
+				if s.peakUsed.CompareAndSwap(prev, used) {
+					break
+				}
+			}
+			time.Sleep(100 * time.Microsecond)
+		}
+	}()
+}
+
+func (s *RamMemSampler) Stop() {
+	s.running.Store(false)
+	<-s.done
+}
+
 func main() {
+	sampler := newRamMemSampler()
+	sampler.Start()
+
 	// CKKS Parameters (generated from CKKSParamSelector)
 	// LogN=14 (n=16384, slots=8192)
 	// MaxLevel=3, LogScale=40
 	params, err := hefloat.NewParametersFromLiteral(hefloat.ParametersLiteral{
 		LogN:            14,
 		LogQ:            []int{55, 40, 40, 40},
-		LogP:            []int{45, 45},
+		LogP:            []int{50, 50},
 		LogDefaultScale: 40,
 	})
 	if err != nil {
@@ -2400,7 +2460,9 @@ func main() {
 		galoisElements[i] = params.GaloisElement(r)
 	}
 
+	galoisKeysStart := time.Now()
 	gks := kgen.GenGaloisKeysNew(galoisElements, sk)
+	keys_elapsed := float64(time.Since(galoisKeysStart).Microseconds()) / 1000.0
 
 	var galois_keys_total_size int
 	for _, gk := range gks {
@@ -4513,7 +4575,8 @@ func main() {
 	for i := 0; i < *repetitions; i++ {
 			tensor_conv2d(encryptedInputs, encodedInputs, encryptedOutputs, encodedOutputs, encoder, enc, eval, params)
 	}
-	computeMillis := float64(time.Since(computeStart).Microseconds()) / 1000.0 / float64(*repetitions)
+  elapsed := float64(time.Since(computeStart).Microseconds()) / 1000.0
+  computeMillis := elapsed / float64(*repetitions)
 	decryptStart := time.Now()
 	maxAbsError := 0.0
 	for name, ct := range encryptedOutputs {
@@ -4535,4 +4598,11 @@ func main() {
 	fmt.Printf("BENCHMARK_METRICS {\"repetitions\":%d,\"encrypt_ms\":%.3f,\"compute_ms\":%.3f,\"decrypt_ms\":%.3f,\"galois_keys\":%d,\"bootstrap_count\":0,\"level_start\":%d,\"level_end\":%d,\"max_abs_error\":%s,\"precision_checked\":%t}\n",
 		*repetitions, encryptMillis, computeMillis, decryptMillis, len(galoisElements), params.MaxLevel(), levelsEnd, maxAbsErrorJSON, precisionChecked)
 	_ = encodedOutputs
+	fmt.Printf("circuit_execution_time_(ms): %f\n", elapsed)
+	fmt.Printf("galois_keys_generation_time_(ms): %f\n", keys_elapsed)
+	fmt.Printf("total_execution_time_(ms): %f\n", elapsed+keys_elapsed)
+	fmt.Println("CKKS computation completed!")
+
+	sampler.Stop()
+	fmt.Printf("peak_ram_memory_(MB): %f\n", float64(sampler.peakUsed.Load())/(1024.0*1024.0))
 }

@@ -80,16 +80,18 @@ Tensor matmul(const Tensor &input, const PlaintextMatrix &matrix)
     for (const auto &diagonal : group)
     {
       const auto &values = diagonals.at(diagonal.index);
+      vector<double> double_vals(slots, 0.0);
       PackedVal packed(slots, 0);
       for (int slot = 0; slot < slots; ++slot)
       {
         const int source = ((slot - giant) % slots + slots) % slots;
         const double value = source < static_cast<int>(values.size()) ? values[source] : 0.0;
+        double_vals[slot] = value;
         packed[slot] = value != 0.0 && round(value) == 0.0
           ? (value > 0.0 ? 1 : -1)
           : static_cast<integer>(round(value));
       }
-      const Ciphertext product = baby_steps.at(diagonal.baby) * Plaintext(packed);
+      const Ciphertext product = baby_steps.at(diagonal.baby) * Plaintext(double_vals, packed);
       if (first_entry) { inner_sum = product; first_entry = false; }
       else inner_sum = inner_sum + product;
     }
@@ -103,6 +105,11 @@ Tensor matmul(const Tensor &input, const PlaintextMatrix &matrix)
 Tensor poly_activate(const Tensor &input, const vector<double> &coefficients)
 {
   if (coefficients.empty()) throw invalid_argument("poly_activate: coefficients must not be empty");
+  if (coefficients.size() == 3 && coefficients[0] == 0.0 && coefficients[1] == 0.0 && coefficients[2] == 1.0)
+  {
+    const Ciphertext x = input.ciphertext();
+    return Tensor(x * x, input.shape(), input.layout());
+  }
   const auto scalar = [](double value) { return Plaintext(static_cast<integer>(round(value))); };
   const Ciphertext x = input.ciphertext();
   if (coefficients.size() == 1)

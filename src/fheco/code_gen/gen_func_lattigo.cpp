@@ -99,32 +99,37 @@ void gen_primitive_reference_go(const shared_ptr<ir::Func> &func, ostream &os)
     os << "\t" << ref << " := make([]float64, len(values))\n";
     if (constant.second.is_scalar_)
     {
+      double scalar_val = !constant.second.float_val_.empty() ? constant.second.float_val_[0] : static_cast<double>(constant.second.val_[0]);
       os << "\tfor i := range " << ref << " { " << ref << "[i] = "
-         << constant.second.val_[0] << " }\n";
+         << scalar_val << " }\n";
     }
     else
     {
-      const auto &vec = constant.second.val_;
+      const bool has_float = !constant.second.float_val_.empty();
+      const size_t vec_size = has_float ? constant.second.float_val_.size() : constant.second.val_.size();
       size_t nz = 0;
-      for (double v : vec)
+      for (size_t i = 0; i < vec_size; ++i)
       {
+        double v = has_float ? constant.second.float_val_[i] : static_cast<double>(constant.second.val_[i]);
         if (v != 0.0) ++nz;
       }
-      if (nz * 4 < vec.size())
+      if (nz * 4 < vec_size)
       {
-        for (size_t index = 0; index < vec.size(); ++index)
+        for (size_t index = 0; index < vec_size; ++index)
         {
-          if (vec[index] != 0.0)
-            os << "\t" << ref << "[" << index << "] = " << vec[index] << "\n";
+          double v = has_float ? constant.second.float_val_[index] : static_cast<double>(constant.second.val_[index]);
+          if (v != 0.0)
+            os << "\t" << ref << "[" << index << "] = " << v << "\n";
         }
       }
       else
       {
         os << "\tcopy(" << ref << ", []float64{";
-        for (size_t index = 0; index < constant.second.val_.size(); ++index)
+        for (size_t index = 0; index < vec_size; ++index)
         {
           if (index) os << ", ";
-          os << constant.second.val_[index];
+          double v = has_float ? constant.second.float_val_[index] : static_cast<double>(constant.second.val_[index]);
+          os << v;
         }
         os << "})\n";
       }
@@ -218,17 +223,16 @@ void gen_func_lattigo(
     os << go_file_header;
   }
   
-  // Generate rotation steps getter
   gen_rotation_steps_getter_go(func_name, rotation_steps, os);
   os << "\n";
   
-  // Generate the main computation function
+  gen_const_terms_go(func->data_flow().constants_info(), func->clear_data_evaluator().signedness(), os);
+
   gen_func_signature_go(func_name, os);
   os << " {\n";
   
   TermsCtxtObjectsInfo terms_ctxt_objects_info;
   gen_input_terms_go(func->data_flow().inputs_info(), os, terms_ctxt_objects_info);
-  gen_const_terms_go(func->data_flow().constants_info(), func->clear_data_evaluator().signedness(), os);
   gen_op_terms_go(func, os, terms_ctxt_objects_info);
   gen_output_terms_go(func->data_flow().outputs_info(), os, terms_ctxt_objects_info);
   
@@ -312,9 +316,23 @@ void gen_const_terms_go(
   ostream &os)
 {
   if (const_terms_info.empty())
+  {
+    os << "func init_constants(params hefloat.Parameters, encoder *hefloat.Encoder) {}\n\n";
     return;
+  }
     
-  os << "\n\t// Encode constants\n";
+  os << "var (\n";
+  for (const auto &const_info : const_terms_info)
+  {
+    auto term = const_info.first;
+    auto object_id = term->id();
+    os << "\t";
+    gen_plain_var_id_go(object_id, os);
+    os << " *rlwe.Plaintext\n";
+  }
+  os << ")\n\n";
+
+  os << "func init_constants(params hefloat.Parameters, encoder *hefloat.Encoder) {\n";
   os << "\tslotCount := params.MaxSlots()\n";
   os << "\t_ = slotCount\n";
   
@@ -325,15 +343,15 @@ void gen_const_terms_go(
     
     os << "\t";
     gen_plain_var_id_go(object_id, os);
-    os << " := hefloat.NewPlaintext(params, params.MaxLevel())\n";
+    os << " = hefloat.NewPlaintext(params, params.MaxLevel())\n";
     
     if (const_info.second.is_scalar_)
     {
-      // Scalar constant - replicate across all slots
+      double scalar_val = !const_info.second.float_val_.empty() ? const_info.second.float_val_[0] : static_cast<double>(const_info.second.val_[0]);
       os << "\t{\n";
       os << "\t\tvalues := make([]float64, slotCount)\n";
       os << "\t\tfor i := range values {\n";
-      os << "\t\t\tvalues[i] = float64(" << const_info.second.val_[0] << ")\n";
+      os << "\t\t\tvalues[i] = float64(" << scalar_val << ")\n";
       os << "\t\t}\n";
       os << "\t\tencoder.Encode(values, ";
       gen_plain_var_id_go(object_id, os);
@@ -342,32 +360,35 @@ void gen_const_terms_go(
     }
     else
     {
-      // Vector constant
-      const auto &vec = const_info.second.val_;
+      const bool has_float = !const_info.second.float_val_.empty();
+      const size_t vec_size = has_float ? const_info.second.float_val_.size() : const_info.second.val_.size();
       size_t nz = 0;
-      for (double v : vec)
+      for (size_t i = 0; i < vec_size; ++i)
       {
+        double v = has_float ? const_info.second.float_val_[i] : static_cast<double>(const_info.second.val_[i]);
         if (v != 0.0) ++nz;
       }
       os << "\t{\n";
-      if (nz * 4 < vec.size())
+      if (nz * 4 < vec_size)
       {
         os << "\t\tvalues := make([]float64, slotCount)\n";
-        for (size_t i = 0; i < vec.size(); ++i)
+        for (size_t i = 0; i < vec_size; ++i)
         {
-          if (vec[i] != 0.0)
+          double v = has_float ? const_info.second.float_val_[i] : static_cast<double>(const_info.second.val_[i]);
+          if (v != 0.0)
           {
-            os << "\t\tvalues[" << i << "] = float64(" << vec[i] << ")\n";
+            os << "\t\tvalues[" << i << "] = float64(" << v << ")\n";
           }
         }
       }
       else
       {
         os << "\t\tvalues := []float64{";
-        for (size_t i = 0; i < const_info.second.val_.size(); ++i)
+        for (size_t i = 0; i < vec_size; ++i)
         {
+          double v = has_float ? const_info.second.float_val_[i] : static_cast<double>(const_info.second.val_[i]);
           if (i > 0) os << ", ";
-          os << "float64(" << const_info.second.val_[i] << ")";
+          os << "float64(" << v << ")";
         }
         os << "}\n";
       }
@@ -377,6 +398,7 @@ void gen_const_terms_go(
       os << "\t}\n";
     }
   }
+  os << "}\n\n";
 }
 
 void gen_op_terms_go(
@@ -990,6 +1012,7 @@ func (s *RamMemSampler) Stop() {
     os << "\texpectedOutputs := make(map[string][]float64)\n";
   }
   os << R"(
+	init_constants(params, encoder)
 	computeStart := time.Now()
 	for i := 0; i < *repetitions; i++ {
 	)";

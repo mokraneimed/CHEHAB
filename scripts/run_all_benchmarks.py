@@ -50,6 +50,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--w-ops", type=float, default=0.5,
                         help="weight for operations in MORL (default: 0.5)")
     parser.add_argument("--bsgs-base", default="global", help="global, 0, or a positive BSGS base")
+    parser.add_argument("--naf", action="store_true",
+                        help="enable NAF rotation-key reduction during Lattigo code generation")
+    parser.add_argument("--naf-threshold", type=int, default=0,
+                        help="maximum rotation-key count targeted by NAF reduction; 0 selects the smallest possible budget")
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--output-csv", default=None, help="custom path for output CSV file")
     parser.add_argument("--timeout", type=int, default=180, help="per-command timeout in seconds")
@@ -126,6 +130,8 @@ def execute_benchmark(benchmark: Benchmark, executable: Path, args: argparse.Nam
     row = empty_row(benchmark, args.repetitions)
     cmd = [str(executable), "--benchmark", benchmark.name, "--optimizer", args.optimizer,
            "--bsgs-base", args.bsgs_base]
+    if args.naf:
+        cmd.extend(["--naf", "--naf-threshold", str(args.naf_threshold)])
     if args.optimizer == "morl":
         cmd.extend(["--w-ops", str(args.w_ops)])
     try:
@@ -171,6 +177,7 @@ def execute_benchmark(benchmark: Benchmark, executable: Path, args: argparse.Nam
     encrypt = float(metrics["encrypt_ms"])
     compute = float(metrics["compute_ms"])
     decrypt = float(metrics["decrypt_ms"])
+    total_measured = round(encrypt + compute + decrypt, 3)
     level_start = int(metrics["level_start"])
     level_end = int(metrics["level_end"])
     row.update(
@@ -178,7 +185,7 @@ def execute_benchmark(benchmark: Benchmark, executable: Path, args: argparse.Nam
         encrypt_ms=encrypt,
         compute_ms=compute,
         decrypt_ms=decrypt,
-        total_measured_ms=round(encrypt + compute + decrypt, 3),
+        total_measured_ms=total_measured,
         rotation_keys=int(metrics["galois_keys"]),
         bootstrap_count=int(metrics["bootstrap_count"]),
         level_start=level_start,
@@ -215,6 +222,8 @@ def main() -> int:
     args = parse_args()
     if args.repetitions <= 0 or args.timeout <= 0:
         raise ValueError("--repetitions and --timeout must be positive")
+    if args.naf_threshold < 0:
+        raise ValueError("--naf-threshold must be non-negative")
     benchmarks = select_benchmarks(args.benchmarks)
     if not (LATTIGO_DIR / "go.mod").is_file():
         raise RuntimeError(f"Missing Lattigo module: {LATTIGO_DIR / 'go.mod'}")

@@ -23,10 +23,11 @@ vector<vector<double>> kernel3()
 
 vector<vector<double>> dense_weights(int outputs, int inputs)
 {
+  const double scale = 1.0 / static_cast<double>(inputs);
   vector<vector<double>> weights(outputs, vector<double>(inputs));
   for (int output = 0; output < outputs; ++output)
     for (int input = 0; input < inputs; ++input)
-      weights[output][input] = static_cast<double>((output + input) % 3 - 1);
+      weights[output][input] = static_cast<double>((output + input) % 3 - 1) * scale;
   return weights;
 }
 
@@ -34,7 +35,7 @@ vector<vector<vector<vector<double>>>> conv_weights(int output_channels, int inp
 {
   return vector<vector<vector<vector<double>>>>(
     output_channels, vector<vector<vector<double>>>(
-      input_channels, vector<vector<double>>(kernel_size, vector<double>(kernel_size, 1.0))));
+      input_channels, vector<vector<double>>(kernel_size, vector<double>(kernel_size, 0.05))));
 }
 
 
@@ -248,6 +249,8 @@ int main(int argc, char **argv)
   string optimizer = "trs";
   float w_ops = 0.5f;
   int user_slots = -1;
+  bool use_naf = false;
+  size_t rotation_keys_threshold = 0;
 
   for (int index = 1; index < argc; ++index)
   {
@@ -259,6 +262,17 @@ int main(int argc, char **argv)
       const string value = argv[index];
       if (value == "global") global_bsgs = true;
       else Compiler::set_canonical_bsgs_base(stoi(value));
+    }
+    else if (argument == "--naf")
+    {
+      use_naf = true;
+    }
+    else if (argument == "--naf-threshold" && ++index < argc)
+    {
+      const int threshold = stoi(argv[index]);
+      if (threshold < 0)
+        throw invalid_argument("--naf-threshold must be non-negative");
+      rotation_keys_threshold = static_cast<size_t>(threshold);
     }
     else if (argument == "--optimizer" && ++index < argc)
     {
@@ -332,11 +346,17 @@ int main(int argc, char **argv)
   if (has_orion_ckks_params(benchmark))
   {
     ckks::CKKSParams params = get_orion_ckks_params(benchmark);
-    Compiler::gen_lattigo_code(func, generated, params);
+    if (use_naf)
+      Compiler::gen_lattigo_code(func, generated, params, rotation_keys_threshold);
+    else
+      Compiler::gen_lattigo_code(func, generated, params);
   }
   else
   {
-    Compiler::gen_lattigo_code(func, generated);
+    if (use_naf)
+      Compiler::gen_lattigo_code(func, generated, rotation_keys_threshold);
+    else
+      Compiler::gen_lattigo_code(func, generated);
   }
 
   cout << "Tensor benchmark: " << benchmark << '\n'
