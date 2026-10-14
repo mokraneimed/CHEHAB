@@ -1,24 +1,34 @@
-add_executable(gx_kernel_checks gx_kernel_checks.cpp)
-target_link_libraries(gx_kernel_checks PRIVATE fheco)
 
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/gx_kernel/he)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/gx_kernel/heongpu)
 add_executable(gx_kernel gx_kernel.cpp)
 target_link_libraries(gx_kernel PRIVATE fheco)
 
-file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/gx_kernel/he)
+# Define the source file and destination file 
 
 
-set(SOURCE_FILE_1 ${CMAKE_SOURCE_DIR}/benchmarks/gx_kernel/he/main.cpp)
-set(DESTINATION_FILE_1 ${CMAKE_SOURCE_DIR}/build/benchmarks/gx_kernel/he/main.cpp)
-set(SOURCE_FILE_2 ${CMAKE_SOURCE_DIR}/benchmarks/gx_kernel/he/utils.cpp)
+
+set(SOURCE_FILE_2 ${CMAKE_SOURCE_DIR}/benchmarks/utils.cpp)
 set(DESTINATION_FILE_2 ${CMAKE_SOURCE_DIR}/build/benchmarks/gx_kernel/he/utils.cpp)
-set(SOURCE_FILE_3 ${CMAKE_SOURCE_DIR}/benchmarks/gx_kernel/he/utils.hpp)
+
+set(SOURCE_FILE_3 ${CMAKE_SOURCE_DIR}/benchmarks/utils.hpp)
 set(DESTINATION_FILE_3 ${CMAKE_SOURCE_DIR}/build/benchmarks/gx_kernel/he/utils.hpp)
 
-add_custom_target(copy_my_file_1gx_kernel ALL
-    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_1} ${DESTINATION_FILE_1}
+set(SOURCE_FILE_4 ${CMAKE_SOURCE_DIR}/benchmarks/gx_kernel/he/CMakeLists.txt)
+set(DESTINATION_FILE_4 ${CMAKE_SOURCE_DIR}/build/benchmarks/gx_kernel/he/CMakeLists.txt)
+
+set(SOURCE_FILE_5 ${CMAKE_SOURCE_DIR}/benchmarks/gx_kernel/fhe_io_example.txt)
+set(DESTINATION_FILE_5 ${CMAKE_SOURCE_DIR}/build/benchmarks/gx_kernel/fhe_io_example.txt)
+
+set(SOURCE_FILE_6 ${CMAKE_SOURCE_DIR}/benchmarks/gx_kernel/generate_gx_kernel.py)
+set(DESTINATION_FILE_6 ${CMAKE_SOURCE_DIR}/build/benchmarks/gx_kernel/generate_gx_kernel.py)
+
+add_custom_target(copy_my_file_6gx_kernel ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_6} ${DESTINATION_FILE_6}
     DEPENDS ${SOURCE_FILE}
-    COMMENT "Copying ${SOURCE_FILE_1} to ${DESTINATION_FILE_1}"
+    COMMENT "Copying ${SOURCE_FILE_6} to ${DESTINATION_FILE_6}"
 )
+
 add_custom_target(copy_my_file_2gx_kernel ALL
     COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_2} ${DESTINATION_FILE_2}
     DEPENDS ${SOURCE_FILE}
@@ -30,10 +40,24 @@ add_custom_target(copy_my_file_3gx_kernel ALL
     COMMENT "Copying ${SOURCE_FILE_3} to ${DESTINATION_FILE_3}"
 )
 
+add_custom_target(copy_my_file_5gx_kernel ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_5} ${DESTINATION_FILE_5}
+    DEPENDS ${SOURCE_FILE}
+    COMMENT "Copying ${SOURCE_FILE_5} to ${DESTINATION_FILE_5}"
+)
+
 set(SOURCE_FILE_4 ${CMAKE_SOURCE_DIR}/benchmarks/gx_kernel/he/CMakeLists.txt)
 set(DESTINATION_FILE_4 ${CMAKE_SOURCE_DIR}/build/benchmarks/gx_kernel/he/CMakeLists.txt)
 add_custom_target(copy_my_file_4gx_kernel ALL
     COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_4} ${DESTINATION_FILE_4}
     DEPENDS ${SOURCE_FILE}
     COMMENT "Copying ${SOURCE_FILE_4} to ${DESTINATION_FILE_4}"
+)
+
+set(SOURCE_FILE_HEONGPU_CMAKE_gx_kernel ${CMAKE_SOURCE_DIR}/benchmarks/gx_kernel/heongpu/CMakeLists.txt)
+set(DESTINATION_FILE_HEONGPU_CMAKE_gx_kernel ${CMAKE_SOURCE_DIR}/build/benchmarks/gx_kernel/heongpu/CMakeLists.txt)
+add_custom_target(copy_heongpu_cmake_gx_kernel ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_HEONGPU_CMAKE_gx_kernel} ${DESTINATION_FILE_HEONGPU_CMAKE_gx_kernel}
+    DEPENDS ${SOURCE_FILE_HEONGPU_CMAKE_gx_kernel}
+    COMMENT "Copying ${SOURCE_FILE_HEONGPU_CMAKE_gx_kernel} to ${DESTINATION_FILE_HEONGPU_CMAKE_gx_kernel}"
 )

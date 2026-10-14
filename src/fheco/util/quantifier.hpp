@@ -91,7 +91,7 @@ public:
   {
     double opposite_level_;
     double size_;
-  };
+  }; 
 
   using CtxtTermsInfo = std::unordered_map<const ir::Term *, CtxtTermInfo, ir::Term::HashPtr, ir::Term::EqualPtr>;
 
@@ -174,6 +174,10 @@ public:
   inline const CAOpsCounts &mod_switch_counts() const { return mod_switch_counts_; }
 
   inline double mod_switch_total() const { return mod_switch_total_; }
+
+  inline const CAOpsCounts &rescale_counts() const { return rescale_counts_; }
+
+  inline double rescale_total() const { return rescale_total_; }
 
   inline const CAOpsCounts &he_add_counts() const { return he_add_counts_; }
 
@@ -258,6 +262,10 @@ private:
 
   double mod_switch_total_ = 0;
 
+  CAOpsCounts rescale_counts_{};
+
+  double rescale_total_ = 0;
+
   CAOpsCounts he_add_counts_{};
 
   double he_add_total_ = 0;
@@ -313,7 +321,7 @@ Quantifier::DepthSummary operator*(int coeff, const Quantifier::DepthSummary &rh
 
 Quantifier::DepthSummary operator*=(Quantifier::DepthSummary &lhs, int coeff);
 
-Quantifier::CtxtTermsDepthInfo operator/(
+Quantifier::CtxtTermsDepthInfo operator/( 
   const Quantifier::CtxtTermsDepthInfo &lhs, const Quantifier::CtxtTermsDepthInfo &rhs);
 
 Quantifier::CtxtTermsDepthInfo &operator/=(

@@ -1,23 +1,34 @@
-add_executable(roberts_cross_checks roberts_cross_checks.cpp)
-target_link_libraries(roberts_cross_checks PRIVATE fheco)
 
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/roberts_cross/he)
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/roberts_cross/heongpu)
 add_executable(roberts_cross roberts_cross.cpp)
 target_link_libraries(roberts_cross PRIVATE fheco)
 
-file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/benchmarks/roberts_cross/he)
+# Define the source file and destination file 
 
-set(SOURCE_FILE_1 ${CMAKE_SOURCE_DIR}/benchmarks/roberts_cross/he/main.cpp)
-set(DESTINATION_FILE_1 ${CMAKE_SOURCE_DIR}/build/benchmarks/roberts_cross/he/main.cpp)
-set(SOURCE_FILE_2 ${CMAKE_SOURCE_DIR}/benchmarks/roberts_cross/he/utils.cpp)
+
+ 
+set(SOURCE_FILE_2 ${CMAKE_SOURCE_DIR}/benchmarks/utils.cpp)
 set(DESTINATION_FILE_2 ${CMAKE_SOURCE_DIR}/build/benchmarks/roberts_cross/he/utils.cpp)
-set(SOURCE_FILE_3 ${CMAKE_SOURCE_DIR}/benchmarks/roberts_cross/he/utils.hpp)
+
+set(SOURCE_FILE_3 ${CMAKE_SOURCE_DIR}/benchmarks/utils.hpp)
 set(DESTINATION_FILE_3 ${CMAKE_SOURCE_DIR}/build/benchmarks/roberts_cross/he/utils.hpp)
 
-add_custom_target(copy_my_file_1roberts_cross ALL
-    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_1} ${DESTINATION_FILE_1}
+set(SOURCE_FILE_4 ${CMAKE_SOURCE_DIR}/benchmarks/roberts_cross/he/CMakeLists.txt)
+set(DESTINATION_FILE_4 ${CMAKE_SOURCE_DIR}/build/benchmarks/roberts_cross/he/CMakeLists.txt)
+
+set(SOURCE_FILE_5 ${CMAKE_SOURCE_DIR}/benchmarks/roberts_cross/fhe_io_example.txt)
+set(DESTINATION_FILE_5 ${CMAKE_SOURCE_DIR}/build/benchmarks/roberts_cross/fhe_io_example.txt)
+
+set(SOURCE_FILE_6 ${CMAKE_SOURCE_DIR}/benchmarks/roberts_cross/generate_roberts_cross.py)
+set(DESTINATION_FILE_6 ${CMAKE_SOURCE_DIR}/build/benchmarks/roberts_cross/generate_roberts_cross.py)
+
+add_custom_target(copy_my_file_6roberts_cross ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_6} ${DESTINATION_FILE_6}
     DEPENDS ${SOURCE_FILE}
-    COMMENT "Copying ${SOURCE_FILE_1} to ${DESTINATION_FILE_1}"
+    COMMENT "Copying ${SOURCE_FILE_6} to ${DESTINATION_FILE_6}"
 )
+
 add_custom_target(copy_my_file_2roberts_cross ALL
     COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_2} ${DESTINATION_FILE_2}
     DEPENDS ${SOURCE_FILE}
@@ -29,10 +40,24 @@ add_custom_target(copy_my_file_3roberts_cross ALL
     COMMENT "Copying ${SOURCE_FILE_3} to ${DESTINATION_FILE_3}"
 )
 
+add_custom_target(copy_my_file_5roberts_cross ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_5} ${DESTINATION_FILE_5}
+    DEPENDS ${SOURCE_FILE}
+    COMMENT "Copying ${SOURCE_FILE_5} to ${DESTINATION_FILE_5}"
+)
+
 set(SOURCE_FILE_4 ${CMAKE_SOURCE_DIR}/benchmarks/roberts_cross/he/CMakeLists.txt)
 set(DESTINATION_FILE_4 ${CMAKE_SOURCE_DIR}/build/benchmarks/roberts_cross/he/CMakeLists.txt)
 add_custom_target(copy_my_file_4roberts_cross ALL
     COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_4} ${DESTINATION_FILE_4}
     DEPENDS ${SOURCE_FILE}
     COMMENT "Copying ${SOURCE_FILE_4} to ${DESTINATION_FILE_4}"
+)
+
+set(SOURCE_FILE_HEONGPU_CMAKE_roberts_cross ${CMAKE_SOURCE_DIR}/benchmarks/roberts_cross/heongpu/CMakeLists.txt)
+set(DESTINATION_FILE_HEONGPU_CMAKE_roberts_cross ${CMAKE_SOURCE_DIR}/build/benchmarks/roberts_cross/heongpu/CMakeLists.txt)
+add_custom_target(copy_heongpu_cmake_roberts_cross ALL 
+    COMMAND ${CMAKE_COMMAND} -E copy ${SOURCE_FILE_HEONGPU_CMAKE_roberts_cross} ${DESTINATION_FILE_HEONGPU_CMAKE_roberts_cross}
+    DEPENDS ${SOURCE_FILE_HEONGPU_CMAKE_roberts_cross}
+    COMMENT "Copying ${SOURCE_FILE_HEONGPU_CMAKE_roberts_cross} to ${DESTINATION_FILE_HEONGPU_CMAKE_roberts_cross}"
 )

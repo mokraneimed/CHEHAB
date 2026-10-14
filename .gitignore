@@ -27,7 +27,7 @@
 *.la
 *.a
 *.lib
-
+**/*/pyc
 # Executables
 *.exe
 *.out
@@ -40,9 +40,27 @@
 bin/
 lib/
 build/
+target/
 *.build
 env
 thirdparty/
-
+egraphs/target/**
 # Jupyter checkpoints
 .ipynb_checkpoints/
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+
+/logs
+
+.DS_Store
+
+commands.txt
+
+manuscript writing/
+manuscript writing/*
+hpc_results/logs/
+he/tensor_lola_auto.go
+docs/
+docs/

@@ -1,19 +1,33 @@
 #pragma once
 
 #include "fheco/ir/func.hpp"
+#include "fheco/param_select/enc_params.hpp"
 #include "fheco/trs/common.hpp"
+#include "fheco/dsl/compiler_helper_functions.hpp"
+
+#include "fheco/param_select/enc_params.hpp"
+#include "fheco/param_select/param_selector.hpp"
+
 #include <cstddef>
 #include <limits>
+#include <map>
 #include <memory>
 #include <ostream>
+#include <queue>
 #include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 #include <utility>
-
+#include <vector>
+ 
+using std::queue;
+using std::string;
+using std::vector;
 namespace fheco
 {
+namespace ckks { struct CKKSParams; }
+
 class Compiler
 {
 public:
@@ -21,9 +35,10 @@ public:
   {
     depth,
     ops_cost,
-    joined
+    joined,
+    simplification_ruleset,
   };
-
+ 
   static inline const std::shared_ptr<ir::Func> &create_func(
     std::string name, std::size_t slot_count, bool delayed_reduct, integer modulus, bool signedness,
     bool need_cyclic_rotation, bool overflow_warnings = false)
@@ -31,7 +46,7 @@ public:
     return add_func(std::make_shared<ir::Func>(
       std::move(name), slot_count, delayed_reduct, modulus, signedness, need_cyclic_rotation, overflow_warnings));
   }
-
+ 
   static inline const std::shared_ptr<ir::Func> &create_func(
     std::string name, std::size_t slot_count, int bit_width, bool signedness, bool need_cyclic_rotation,
     bool overflow_warnings = false)
@@ -40,28 +55,69 @@ public:
       std::move(name), slot_count, bit_width, signedness, need_cyclic_rotation, overflow_warnings));
   }
 
-  static void compile(
-    std::shared_ptr<ir::Func> func, Ruleset ruleset, trs::RewriteHeuristic rewrite_heuristic, std::ostream &header_os,
-    std::string_view header_name, std::ostream &source_os, bool log2_reduct = false);
+  static void compile( 
+    std::shared_ptr<ir::Func> func, Ruleset ruleset, trs::RewriteHeuristic rewrite_heuristic);
+  
+  static ir::Term *build_expression(
+  const std::shared_ptr<ir::Func> &func, std::map<string, ir::Term *> map, queue<string> &tokens);
+  
+  static void gen_vectorized_code(const std::shared_ptr<ir::Func> &func, int optimization_method, float w_ops = -1.0f, float w_keys = -1.0f, const std::string& framework = "");
 
+  static void format_vectorized_code(const std::shared_ptr<ir::Func> &func,bool final_expression_reached);
+
+  static void gen_vectorized_code(const std::shared_ptr<ir::Func> &func, int window, int optimization_method, float w_ops = -1.0f, float w_keys = -1.0f, const std::string& framework = "");
+  
   static void gen_he_code(
     const std::shared_ptr<ir::Func> &func, std::ostream &header_os, std::string_view header_name,
     std::ostream &source_os, std::size_t rotation_keys_threshold = std::numeric_limits<std::size_t>::max(),
-    bool lazy_relin = false);
+    bool lazy_relin = false,param_select::EncParams::SecurityLevel security_level=param_select::EncParams::SecurityLevel::tc128);
 
+  // Generate Lattigo (Go) code for CKKS
+  static void gen_lattigo_code(
+    const std::shared_ptr<ir::Func> &func, std::ostream &go_os,
+    std::size_t rotation_keys_threshold = std::numeric_limits<std::size_t>::max(),
+    bool insert_rescale = true,
+    const ckks::CKKSParams *custom_params = nullptr);
+
+  static void gen_lattigo_code(
+    const std::shared_ptr<ir::Func> &func, std::ostream &go_os,
+    const ckks::CKKSParams &custom_params,
+    std::size_t rotation_keys_threshold = std::numeric_limits<std::size_t>::max(),
+    bool insert_rescale = true);
+
+  // Generate HEonGPU (CUDA) code for BFV or CKKS
+  static void gen_heongpu_code(
+    const std::shared_ptr<ir::Func> &func, std::ostream &cu_os, int scheme,
+    std::size_t rotation_keys_threshold = std::numeric_limits<std::size_t>::max());
   static inline const std::shared_ptr<ir::Func> &active_func()
   {
     if (active_func_it_ == funcs_table_.cend())
       throw std::logic_error("active_func is null");
-
     return active_func_it_->second;
   }
 
   static void set_active_func(const std::string &name);
 
+  static void call_egraph_vectorizer(int vector_width,int rewrite_rule_family_index);
+  
+  static void call_rl_vectorizer(int vector_width, float w_ops = -1.0f, float w_keys = -1.0f, const std::string& framework = "");
+
+  static void call_vectorizer(int vector_width, int optimization_method, float w_ops = -1.0f, float w_keys = -1.0f, const std::string& framework = "");
+
+  static void call_script();
+
   static const std::shared_ptr<ir::Func> &get_func(const std::string &name);
 
   static void delete_func(const std::string &name);
+
+  // DNN tensor lowering registers its diagonal sets here so a two-pass build
+  // can choose one BSGS base that minimizes rotation keys across all layers.
+  static inline void set_canonical_bsgs_base(int n1) { canonical_bsgs_base_ = n1; }
+  static inline int canonical_bsgs_base() { return canonical_bsgs_base_; }
+  static void clear_all_funcs();
+  static void register_layer_diags(const std::vector<int> &diags);
+  static int compute_global_bsgs_base();
+  static void clear_diag_collector();
 
   static inline bool cse_enabled() { return cse_enabled_; }
 
@@ -87,6 +143,12 @@ public:
 
   static inline void disable_scalar_vector_shape() { scalar_vector_shape_ = false; }
 
+  static inline void enable_auto_enc_params_selection() {automatic_enc_params_enabled_ = true ;}
+
+  static inline void disable_auto_enc_params_selection() {automatic_enc_params_enabled_ = false ;}
+
+  static inline bool auto_enc_params_selection_enabled() {return automatic_enc_params_enabled_ ;}
+
 private:
   using FuncsTable = std::unordered_map<std::string, std::shared_ptr<ir::Func>>;
 
@@ -103,6 +165,11 @@ private:
   static bool const_folding_enabled_;
 
   static bool scalar_vector_shape_;
+
+  static bool automatic_enc_params_enabled_ ;
+
+  static int canonical_bsgs_base_;
+  static std::vector<std::vector<int>> layer_diags_collector_;
 };
 
 std::ostream &operator<<(std::ostream &os, Compiler::Ruleset ruleset);
