@@ -1,5 +1,9 @@
 from stable_baselines3.common.vec_env import VecEnvWrapper
 
+# Upper bound of the Lagrange multiplier. Violations are in PERCENT (can be >100), so without a cap lambda
+# grows without limit when many episodes start above the budget. Tune from the first training logs.
+LAMBDA_MAX = 5.0
+
 
 def violation_pct(value, budget):
     """Relative constraint violation in percent: 100 * (value - budget) / budget.
@@ -24,7 +28,7 @@ class BaseLagrangianWrapper(VecEnvWrapper):
     def update_lambda_penalty(self, constraint_value, budget):
         delta = violation_pct(constraint_value, budget)
         if delta > 0:
-            self.lambda_penalty += 0.01 * delta
+            self.lambda_penalty = min(self.lambda_penalty + 0.01 * delta, LAMBDA_MAX)
         else:
             self.lambda_penalty = max(0, self.lambda_penalty - 0.01)
 

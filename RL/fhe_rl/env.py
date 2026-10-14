@@ -2,7 +2,7 @@ import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
 from pytrs import parse_sexpr, calculate_cost, expr_to_str
-from .memory import MemoryEstimator
+from .memory import MemoryEstimator, rotation_steps
 import torch
 from .config import get_tokenizer_type
 
@@ -30,7 +30,7 @@ UNCONSTRAINED_BUDGET_THRESHOLD = 100_000
 
 
 class fheEnv(gym.Env):
-    DEFAULT_BUDGET_OPTIONS = [800, 1500, 2600, 1_000_000]   # peak-RAM budgets in MB (1_000_000 = unconstrained)
+    DEFAULT_BUDGET_OPTIONS = [1500, 2000, 2600, 1_000_000]   # peak-RAM budgets in MB (1_000_000 = unconstrained)
     
     def __init__(self, rules_list, expressions, max_positions=2, embeddings_model=None, budget_options=None, constraint_method="lagrangian_od_ov", verbose=True):
         super().__init__()
@@ -145,6 +145,7 @@ class fheEnv(gym.Env):
             "budget": self.budget,
             "constraint_value": self._estimate(self.expression),
             "cost": self.current_cost,
+            "rotation_keys": rotation_steps(self.expression),
         }
 
 
@@ -157,6 +158,7 @@ class fheEnv(gym.Env):
             print(f"{BOLD}{MAGENTA}At position   {RESET}: {BLUE}{pos_idx}{RESET}")
             print(f"{BOLD}{MAGENTA}Budget         {RESET}: {YELLOW}{info['budget']}{RESET}")
             print(f"{BOLD}{MAGENTA}Peak RAM (MB){RESET}: {YELLOW}{info['constraint_value']}{RESET}")
+            print(f"{BOLD}{MAGENTA}Rotation keys {RESET}: {YELLOW}{info['rotation_keys']}{RESET}")
             print(f"{CYAN}{'-'*100}{RESET}")
 
         embedding = self._embed_expression(self.expression)

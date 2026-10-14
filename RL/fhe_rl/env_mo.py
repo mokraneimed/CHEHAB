@@ -5,6 +5,7 @@ from pytrs import parse_sexpr, calculate_cost, Expr, Const, Var, Op, expr_to_str
 import torch
 from .config import get_tokenizer_type
 from pytrs.cost import _calculate_cost_mo
+from .memory import MemoryEstimator, rotation_steps
 
 if get_tokenizer_type() == "bpe":
 
@@ -42,6 +43,8 @@ class fheEnvMO(gym.Env):
         n_cycle=1,
         n_budget=5,
         env_idx=0,
+        budget_options=None,
+        constraint_method="lagrangian_od_ov",
     ):
 
 
@@ -74,11 +77,19 @@ class fheEnvMO(gym.Env):
         self.embeded_expression = None
         self.random_pref = True
 
+        # -- peak-RAM constraint (optional: budget_options=None keeps the legacy behaviour) --
+        self.budget_options = list(budget_options) if budget_options else None
+        self.constraint_method = constraint_method
+        self.budget = None
+        self.initial_mem = self.curr_mem = 0.0
+        self.memory_estimator = MemoryEstimator(margin=False) if self.budget_options else None
+        self._extra_dim = (len(self.budget_options) + 1) if self.budget_options else 0
+
         self.action_space = spaces.Discrete(len(self.rules.keys()) * self.max_positions)
         self.observation_space = spaces.Dict(
             {
                 "observation": spaces.Box(
-                    low=-np.inf, high=np.inf, shape=(258,), dtype=np.float32
+                    low=-np.inf, high=np.inf, shape=(258 + self._extra_dim,), dtype=np.float32
                 ),
                 "action_mask": spaces.Box(
                     0, 1, (len(self.rules.keys()) * self.max_positions,), np.float32
@@ -140,6 +151,16 @@ class fheEnvMO(gym.Env):
         self.initial_ops, self.initial_keys = self.get_split_costs(self.expression)
         self.curr_ops, self.curr_keys = self.get_split_costs(self.expression)
 
+        if self.budget_options:
+            budget = int(self.np_random.choice(self.budget_options))
+            if isinstance(options, dict):
+                budget = options.get("budget", budget)
+            self.budget = budget
+            try:
+                self.initial_mem = self.curr_mem = float(self.memory_estimator.estimate(self.expression))
+            except Exception:      # estimator cannot handle this expression: take the next one
+                return self.reset(seed=seed, options=options)
+
         if self.pref_locked:
             mode_name = "LOCKED (EVALUATION)"
         else:
@@ -157,7 +178,14 @@ class fheEnvMO(gym.Env):
         else:
             emb = self.embeded_expression
         w = np.atleast_1d(self.current_w).astype(np.float32)
-        obs = np.concatenate([emb, w]).astype(np.float32)
+        parts = [emb, w]
+        if self.budget_options:
+            one_hot = np.zeros(len(self.budget_options), dtype=np.float32)
+            idx = min(range(len(self.budget_options)), key=lambda i: abs(self.budget_options[i] - self.budget))
+            one_hot[idx] = 1.0
+            ratio = float(np.clip(self.curr_mem / max(self.budget, 1), 0.0, 20.0))
+            parts += [one_hot, np.array([ratio], dtype=np.float32)]
+        obs = np.concatenate(parts).astype(np.float32)
         return {"observation": obs, "action_mask": self.get_action_mask()}
 
     def step(self, action: int):
@@ -198,6 +226,11 @@ class fheEnvMO(gym.Env):
             self.curr_keys = new_keys
 
             self.current_cost = new_cost
+            if self.budget_options:
+                try:
+                    self.curr_mem = float(self.memory_estimator.estimate(self.expression))
+                except Exception:
+                    pass           # keep the previous value
             if self.steps >= self.max_steps:
                 terminated = True
                 reward = self.calculate_final_reward()
@@ -220,6 +253,10 @@ class fheEnvMO(gym.Env):
             reward = self.calculate_final_reward()
         else:
             terminated = terminated or (self.steps >= self.max_steps)
+        if self.budget_options and (terminated or truncated) and self.constraint_method == "nato_sc":
+            final_mem = self.initial_mem if self.curr_ops > self.initial_ops else self.curr_mem   # same rollback as below
+            if final_mem > self.budget:
+                reward = reward - 50.0 * ((final_mem - self.budget) / max(self.budget, 1)) ** 2
         if terminated or truncated:
             info["episode"] = {"r": reward, "l": self.steps, "t": None}
 
@@ -227,6 +264,8 @@ class fheEnvMO(gym.Env):
                 self.expression = self.initial_expression
                 info["expression"] = self.initial_expression
                 self.curr_ops = self.initial_ops
+                if self.budget_options:
+                    self.curr_mem = self.initial_mem
 
             print(
                 f"\n{BOLD}{MAGENTA}Initial exec cost {RESET}: {YELLOW}{self.initial_ops}{RESET}"
@@ -241,7 +280,17 @@ class fheEnvMO(gym.Env):
                 f"{BOLD}{MAGENTA}Final keys cost   {RESET}: {GREEN}{self.curr_keys}{RESET}"
             )
         obs = self._get_obs()
-        return obs, reward, terminated, truncated, {"expression": self.expression}
+        out_info = {"expression": self.expression}
+        if self.budget_options:
+            out_info.update({
+                "budget": self.budget,
+                "constraint_value": self.curr_mem,
+                "initial_constraint_value": self.initial_mem,
+                "rotation_keys": rotation_steps(self.expression),
+                "ops": self.curr_ops,
+                "keys": self.curr_keys,
+            })
+        return obs, reward, terminated, truncated, out_info
 
     def _valid_end_action(self, expr: str) -> bool:
         expr_tree = parse_sexpr(expr)

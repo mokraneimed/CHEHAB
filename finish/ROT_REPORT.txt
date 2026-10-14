@@ -1,0 +1,28 @@
+[shallow g=0] status=ok 
+[shallow g=4] status=ok 
+[shallow g=16] status=ok 
+[shallow g=32] status=ok 
+[deep g=0] status=ok 
+[deep g=4] status=ok 
+[deep g=16] status=ok 
+[deep g=32] status=ok 
+
+family   g_req | est(N,L) est_G est_galMB est_total | go(N,L) go_G rotKeys_MB | measured_RSS_MB (runs)
+shallow     0 | (16384,4)   0       0.0      39.6 | (16384,4) 0 0.0 | 30.94 (30.50;32.37;30.94)
+shallow     4 | (16384,4)   4      12.0      61.2 | (16384,4) 4 12.001221 | 59.21 (58.90;59.21;59.33)
+shallow    16 | (16384,4)  16      48.0     104.4 | (16384,4) 16 48.004883 | 122.97 (123.22;122.97;116.85)
+shallow    32 | (16384,4)  32      96.0     162.0 | (16384,4) 32 96.009766 | 215.12 (216.62;208.12;215.12)
+deep        0 | (32768,9)   0       0.0     293.1 | (32768,9) 0 0.0 | 212.87 (187.31;212.87;231.06)
+deep        4 | (32768,9)   4     110.0     440.2 | (32768,9) 4 110.004395 | 378.29 (378.29;375.29;380.85)
+deep       16 | (32768,9)  16     440.0     836.2 | (32768,9) 16 440.017578 | 979.82 (995.00;979.82;894.00)
+deep       32 | (32768,9)  32     880.0    1364.2 | (32768,9) 32 880.035156 | 1861.53 (1905.29;1832.34;1861.53)
+
+MARGINAL COST PER ROTATION KEY (measured RSS(g) - RSS(0)) / g   vs   estimator's key term / G
+shallow  g_req= 4 go_G= 4 : measured   +28.3 MB total =   7.07 MB/key | estimator   3.00 MB/key | ratio meas/est = 2.36
+shallow  g_req=16 go_G=16 : measured   +92.0 MB total =   5.75 MB/key | estimator   3.00 MB/key | ratio meas/est = 1.92
+shallow  g_req=32 go_G=32 : measured  +184.2 MB total =   5.76 MB/key | estimator   3.00 MB/key | ratio meas/est = 1.92
+deep     g_req= 4 go_G= 4 : measured  +165.4 MB total =  41.36 MB/key | estimator  27.50 MB/key | ratio meas/est = 1.50
+deep     g_req=16 go_G=16 : measured  +767.0 MB total =  47.93 MB/key | estimator  27.50 MB/key | ratio meas/est = 1.74
+deep     g_req=32 go_G=32 : measured +1648.7 MB total =  51.52 MB/key | estimator  27.50 MB/key | ratio meas/est = 1.87
+
+(The current model multiplies the estimator's key term by GALOIS_KEY_FACTOR=1.20; the 'ratio meas/est' above is the figure to replace it.)

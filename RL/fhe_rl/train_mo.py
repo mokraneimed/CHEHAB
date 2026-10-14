@@ -28,7 +28,8 @@ def set_random_seed(seed: int = 42):
     os.environ['PYTHONHASHSEED'] = str(seed)
 
 def train_agent_mo(expressions_file: str, embeddings_model, total_timesteps: int = 1_000_000, num_envs: int = 8, ent_coef: float = 0.1, seed: int = 42, 
-                lambda_env: float = 0.0, lambda_kl: float = 0.0, n_cycle: int = 1, n_budget: int = 5, eval_freq: int = 10000):
+                lambda_env: float = 0.0, lambda_kl: float = 0.0, n_cycle: int = 1, n_budget: int = 5, eval_freq: int = 10000,
+                budget_options: list = None, constraint_method: str = "lagrangian_od_ov", algo: str = "ppo"):
     set_random_seed(seed)
     N=2
     pref_list = generate_pref_list(N)
@@ -69,11 +70,23 @@ def train_agent_mo(expressions_file: str, embeddings_model, total_timesteps: int
             # Pass pref_list and rank to each env
             EnvCls = get_env_class()
             return Monitor(EnvCls(rules_list, expressions, max_positions=max_positions, embeddings_model=embeddings_model, 
-                                  pref_list=pref_list, lambda_env=lambda_env, lambda_kl=lambda_kl, n_cycle=n_cycle, n_budget=n_budget, env_idx=rank))
+                                  pref_list=pref_list, lambda_env=lambda_env, lambda_kl=lambda_kl, n_cycle=n_cycle, n_budget=n_budget, env_idx=rank,
+                                  budget_options=budget_options, constraint_method=constraint_method))
         return _init  
     env = SubprocVecEnv([make_env(i, expressions) for i in range(num_envs)])
     env.seed(seed)     
     val_env = DummyVecEnv([make_env(0, benchmarks)])
+    if budget_options and constraint_method != "none":
+        # same Lagrangian wrappers as the constrained framework (train.py)
+        from .train import WRAPPER_MAP
+        WrapperCls = WRAPPER_MAP.get(constraint_method)
+        if WrapperCls is not None:
+            env = WrapperCls(env)
+            val_env = WrapperCls(val_env)
+        if algo == "lagrangian_pid":
+            from .algos.lagrangian_pid import PIDLagrangianWrapper
+            env = PIDLagrangianWrapper(env)
+        print(f"[unified] budgets={budget_options} method={constraint_method} algo={algo}")
     ent_schedule = linear_schedule(0.1)
     ent_callback = EntCoefScheduler(ent_schedule, verbose=1)
     model_params = {
@@ -93,7 +106,7 @@ def train_agent_mo(expressions_file: str, embeddings_model, total_timesteps: int
         "seed": seed,
         "policy_kwargs": {
             "ent_coef": ent_coef,
-            "features_dim": 258,
+            "features_dim": 258 + ((len(budget_options) + 1) if budget_options else 0),
             "rule_dim":      len(rules_list),
             "max_positions": max_positions,
             "rule_hidden_dims":   [64, 32],

@@ -4,26 +4,30 @@ Calibrated peak-RAM model for the CHEHAB RL environment (Lattigo / CPU).
 Single entry point used by env.py:   peak_ram_mb(expr) -> float   (MB of process peak RSS)
 
 How it works
-  1. CKKSMemoryEstimator terms (Mounir) give the analytic "net" memory.
+  1. CKKSMemoryEstimator terms provide the analytical cryptographic "net" memory.
   2. A per-N-group calibration maps net -> measured MaxRSS (fitted on the pilot, see fit_calib.py).
   3. A multiplicative safety margin (held-out p90 of measured/predicted) is applied by default,
      so the constraint rarely under-estimates.
   4. Circuits WITH rotations (G>0) are NOT validated against the pipeline: the calibration is
      applied to the non-key terms only, and Galois-key bytes are scaled by GALOIS_KEY_FACTOR
-     (from Mounir's synthetic Lattigo rows: measured/estimated p90 = 1.35, N=32768 p90 = 1.13).
+     (derived from synthetic Lattigo benchmarks: measured/estimated p90 = 1.35, N=32768 p90 = 1.13).
 """
 import json, math, os, sys
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_HERE, "..", "pytrs"))
+try:                                  # loaded as part of the package (python -m fhe_rl ...)
+    from . import packing  # noqa: E402
+except ImportError:                   # loaded as a plain module (scripts run from this folder)
+    import packing  # noqa: E402
 from ckks_memory_estimator import (estimate_expression_memory, estimate_peak_memory,  # noqa: E402
                                    ciphertext_bytes)
 
 BACKEND = "cpu"                     # only Lattigo/CPU is supported for now
 MB = 1024.0 * 1024.0
-GALOIS_KEY_FACTOR = 1.20            # G>0 only; NOT validated on the pipeline
+GALOIS_KEY_FACTOR = 1.76  # measured by finish/rot_probe.py: RSS ~1.9x key size at (16384,4) and (32768,9); 1.76 = GC ratio of the deep group
 CALIB_PATH = os.environ.get("PEAK_RAM_CALIB", os.path.join(_HERE, "memory_calib.json"))
-ESTIMATOR_VERSION = "calib-v2-monotone"
+ESTIMATOR_VERSION = "calib-v3-packed"
 
 _calib = None
 _cache = {}
@@ -50,6 +54,8 @@ def _apply(group, net_mb, L, margin):
         pred = c["ratio"] * net_mb
     else:  # loglog:  log rss = a + b*log(net) + cL*L
         pred = math.exp(c["a"] + c["b"] * math.log(max(net_mb, 1e-6)) + c["cL"] * L)
+    if "cap_ratio" in c:   # optional plateau of RSS/net (set by finish/analyze_top.py only if validated)
+        pred = min(pred, c["cap_ratio"] * net_mb)
     return pred * (c["margin"] if margin else 1.0)
 
 
@@ -75,7 +81,13 @@ def _lower_bound(group, margin):
 
 
 def peak_ram_breakdown(expr, margin=True):
-    est = estimate_expression_memory(expr, BACKEND)
+    try:
+        expr_used = packing.pack_expr_str(expr)
+        packed_ok = True
+    except Exception:
+        expr_used = expr
+        packed_ok = False
+    est = estimate_expression_memory(expr_used, BACKEND)
     p = est.params
     gal_mb = est.terms.get("galois_keys", 0.0) / MB
     non_key_mb = est.total_mb - gal_mb
@@ -85,7 +97,7 @@ def peak_ram_breakdown(expr, margin=True):
     pred = max(pred_raw, _lower_bound(g, margin))
     return dict(mb=pred, clamped=pred > pred_raw, N=p.N, L=p.L, K=p.K, G=est.rotation_steps, group=g,
                 raw_net_mb=est.total_mb, galois_mb=gal_mb, live_cts=est.peak_live_ciphertexts,
-                validated=(est.rotation_steps == 0))
+                validated=(est.rotation_steps == 0), packed=packed_ok)
 
 
 def peak_ram_mb(expr, margin=True):
@@ -100,9 +112,74 @@ def peak_ram_mb(expr, margin=True):
     return v
 
 
+_rot_cache = {}
+
+
+def rotation_steps(expr):
+    """Number of distinct rotation steps (= Galois keys) of the packed expression; -1 if the estimator fails. Cached."""
+    v = _rot_cache.get(expr)
+    if v is None:
+        if len(_rot_cache) > _CACHE_MAX:
+            _rot_cache.clear()
+        try:
+            v = int(peak_ram_breakdown(expr, margin=False)["G"])
+        except Exception:
+            v = -1
+        _rot_cache[expr] = v
+    return v
+
+
 def floor_mb(N, L, K, margin=True):
     """Memory of an (almost) empty circuit with these params: the smallest value a rewrite can reach."""
     return max(_raw_floor_mb(N, L, K, margin), _lower_bound(group_of(N), margin))
+
+def _components(expr):
+    """Analytical component breakdown of the (packed) expression, MB. Uncalibrated estimator terms."""
+    if not isinstance(expr, str):
+        from serializer import expr_to_str
+        expr = expr_to_str(expr)
+    try:
+        used = packing.pack_expr_str(expr)
+    except Exception:
+        used = expr
+    est = estimate_expression_memory(used, BACKEND)
+    t = {k: v / MB for k, v in est.terms.items()}
+    return dict(N=est.params.N, L=est.params.L, K=est.params.K, G=est.rotation_steps,
+                galois=t.get("galois_keys", 0.0), cts=t.get("ciphertexts", 0.0),
+                ctx=t.get("public_secret_key", 0.0) + t.get("context_evaluator", 0.0) + t.get("key_switching_scratch", 0.0),
+                relin=t.get("relinearization_key", 0.0), live=est.peak_live_ciphertexts)
+
+
+def extra_metrics(initial_expr, final_expr, initial_mb, final_mb, budget, prefix=""):
+    """Evaluation metrics of the peak-RAM spec (section 7) that are not plain columns yet. Never raises."""
+    unb = budget > 100_000                      # 1_000_000 = unconstrained
+    started_infeasible = (not unb) and initial_mb > budget
+    feasible = unb or final_mb <= budget
+    out = {
+        "RAM Expansion (%)": round(100.0 * (final_mb - initial_mb) / initial_mb, 2) if initial_mb > 0 else 0.0,
+        "Feasibility": "FEASIBLE" if feasible else "VIOLATED (OOM)",
+        "Started Infeasible": bool(started_infeasible),
+        "Recovered": bool(started_infeasible and feasible),
+    }
+    try:
+        i, f = _components(initial_expr), _components(final_expr)
+        out.update({
+            "Initial G": i["G"], "Initial Peak Live Cts": i["live"],
+            "Final N": f["N"], "Final L": f["L"], "Final K": f["K"], "Final G": f["G"],
+            "Final Galois Keys (est MB)": round(f["galois"], 2),
+            "Final Live Ciphertexts (est MB)": round(f["cts"], 2),
+            "Final Peak Live Cts": f["live"],
+            "Final Context+Scratch (est MB)": round(f["ctx"], 2),
+            "Final Relin Key (est MB)": round(f["relin"], 2),
+        })
+    except Exception as e:                      # diagnostics must never break an evaluation run
+        out["Metrics Error"] = f"{type(e).__name__}: {e}"[:120]
+    if prefix:      # secondary view (e.g. the rollback-picked expression): shorter, every column prefixed
+        for k in ("Started Infeasible", "Initial G", "Initial Peak Live Cts"):
+            out.pop(k, None)
+        out = {prefix + k: v for k, v in out.items()}
+    return out
+
 
 class MemoryEstimator:
     """Drop-in replacement of NoiseEstimator: .estimate(expr_or_tree) -> peak RAM in MB.

@@ -266,6 +266,9 @@ def main(args=None):
                 lambda_env=parsed_args.lambda_env,
                 lambda_kl=parsed_args.lambda_kl,
                 eval_freq=parsed_args.eval_freq,
+                budget_options=budget_options,
+                constraint_method=parsed_args.method,
+                algo=parsed_args.algo,
             )
         else:
             train_agent(

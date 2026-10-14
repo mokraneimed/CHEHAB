@@ -1,0 +1,139 @@
+repo: /home/maroua/chehab-unified | python: /home/maroua/miniconda3/envs/chehabEnv/bin/python3 | Wed Oct 14 08:18:06 CET 2026
+branch: peakModel-integration @ 4392c70f
+
+================ STEP 1: apply the final edits ================
+[calib] backup written: /home/maroua/chehab-unified/RL/fhe_rl/memory_calib_v2_unpacked.json
+[calib] memory_calib.json replaced by v3
+[calib] active: {'16384': {'model': 'loglog', 'a': -0.14, 'b': 1.2226, 'cL': -0.0668, 'margin': 1.0488}, '32768': {'model': 'ratio', 'ratio': 1.7605, 'margin': 1.056}}
+[env budgets] applied
+[wrappers LAMBDA_MAX constant] applied
+[wrappers lambda cap] applied
+[memory.py cap hook] applied
+
+STEP 1 RESULT: OK
+
+================ STEP 2: measure the 10 largest N=16384 circuits (3 runs each) ================
+Go env: {'GOGC': '100', 'GOMAXPROCS': '', 'go_version': 'go version go1.26.0 linux/amd64', 'lattigo_version': 'v5.0.7', 'GOOS': 'linux', 'GOARCH': 'amd64'}
+Timeout per run: 1200s (provisional)
+WARNING: pairs file missing, raw only
+Measuring 10 expressions...
+Measuring 10 pending / 10 total expressions...
+[1/10] raw 0...
+[2/10] raw 1...
+[3/10] raw 2...
+[4/10] raw 3...
+[5/10] raw 4...
+[6/10] raw 5...
+[7/10] raw 6...
+[8/10] raw 7...
+[9/10] raw 8...
+[10/10] raw 9...
+Wrote temp/top16384_measured.csv
+calibration file: /home/maroua/chehab-unified/RL/fhe_rl/memory_calib.json | cap already active: False
+candidate cap_ratio (= N=32768 ratio): 1.7605
+
+  id      N    L   net_MB  measured  loglog  err%    capped  err%   spread
+   0  16384   8    312.1     580.3    571.0   -1.6    549.4   -5.3   62.12
+   1  16384   7    273.6     476.9    519.8   +9.0    481.7   +1.0   23.31
+   2  16384   7    273.4     427.4    519.2  +21.5    481.2  +12.6   28.56
+   3  16384   5    242.7     432.4    513.1  +18.6    427.3   -1.2   6.09
+   4  16384   6    152.3     263.3    271.5   +3.1    268.2   +1.9   27.0
+   5  16384   5    158.0     275.8    303.5  +10.0    278.1   +0.8   21.18
+   6  16384   5    161.5     279.4    311.7  +11.6    284.3   +1.7   17.85
+   7  16384   8    184.1     320.8    299.5   -6.6    299.5   -6.6   18.12
+   8  16384   8    215.8     356.8    363.8   +2.0    363.8   +2.0   29.77
+   9  16384   7    249.1     437.5    463.4   +5.9    438.6   +0.2   37.07
+
+log-log : median |err| 7.8%  median signed +7.5%  worst under -6.6%  worst over +21.5%
+capped  : median |err| 1.8%  median signed +0.9%  worst under -6.6%  worst over +12.6%
+rows beyond the training range (net>274 MB): 1
+   loglog -1.6%   capped -5.3%
+
+RULE: median|err| capped < loglog: True | no under-prediction beyond -10%: True | >=3 rows beyond range: False
+DECISION: KEEP PURE LOG-LOG (calibration file unchanged)
+
+================ STEP 3: can rewrites bring circuits under a budget? (measured pairs) ================
+measured pairs with both sides ok: 100
+
+N=16384 originals: n=62 | rewritten/original RSS ratio: p10 0.82  p50 0.97  p90 1.03 | reduced by >=10%: 17/62 | by >=25%: 3/62
+
+N=32768 originals: n=38 | rewritten/original RSS ratio: p10 0.25  p50 0.93  p90 1.04 | reduced by >=10%: 13/38 | by >=25%: 5/38
+   budget 1200 MB: originals above = 24 ; of these the rewritten version is under the budget: 1/24
+   budget 1500 MB: originals above = 20 ; of these the rewritten version is under the budget: 4/20
+   budget 2000 MB: originals above = 12 ; of these the rewritten version is under the budget: 1/12
+   budget 2600 MB: originals above =  4 ; of these the rewritten version is under the budget: 3/4
+
+NOTE: these are the pilot's own rewrites (not RL-chosen), so they show what is achievable, not what the agent will do.
+
+================ STEP 4: real cost of rotation keys ================
+[shallow g=0] status=estimator_fail KeyError: 'a38'
+[shallow g=4] status=estimator_fail KeyError: 'a38'
+[shallow g=16] status=estimator_fail KeyError: 'a38'
+[shallow g=32] status=estimator_fail KeyError: 'a38'
+[deep g=0] status=estimator_fail KeyError: 'm1_62'
+[deep g=4] status=estimator_fail KeyError: 'm1_62'
+[deep g=16] status=estimator_fail KeyError: 'm1_62'
+[deep g=32] status=estimator_fail KeyError: 'm1_62'
+
+family   g_req | est(N,L) est_G est_galMB est_total | go(N,L) go_G rotKeys_MB | measured_RSS_MB (runs)
+shallow     0 | (16384,4)   0       0.0      39.6 | (?,?) ? ? | - (-)
+shallow     4 | (16384,4)   4      12.0      61.2 | (?,?) ? ? | - (-)
+shallow    16 | (16384,4)  16      48.0     104.4 | (?,?) ? ? | - (-)
+shallow    32 | (16384,4)  32      96.0     162.0 | (?,?) ? ? | - (-)
+deep        0 | (32768,9)   0       0.0     293.1 | (?,?) ? ? | - (-)
+deep        4 | (32768,9)   4     110.0     440.2 | (?,?) ? ? | - (-)
+deep       16 | (32768,9)  16     440.0     836.2 | (?,?) ? ? | - (-)
+deep       32 | (32768,9)  32     880.0    1364.2 | (?,?) ? ? | - (-)
+
+MARGINAL COST PER ROTATION KEY (measured RSS(g) - RSS(0)) / g   vs   estimator's key term / G
+shallow : baseline g=0 failed -> no marginal figure
+deep : baseline g=0 failed -> no marginal figure
+
+(The current model multiplies the estimator's key term by GALOIS_KEY_FACTOR=1.20; the 'ratio meas/est' above is the figure to replace it.)
+
+================ STEP 5: final check of the active model ================
+version: calib-v3-packed | calibration: /home/maroua/chehab-unified/RL/fhe_rl/memory_calib.json
+PASS estimator version is calib-v3-packed
+PASS active calibration is the packed one (N=32768 ratio ~1.76) : 1.7604568299728758
+cap_ratio active: no
+floors: [41.3, 51.0, 57.6, 67.2, 73.1, 238.5, 264.3, 302.2, 330.1, 371.9, 402.0]
+PASS floors non-decreasing across the whole (N,L) sequence
+env budgets: [1500, 2000, 2600, 1_000_000]
+PASS env budgets are 1500/2000/2600/unconstrained
+PASS wrappers: lambda is capped
+clean circuits: 42674 | deep (N>16384): 6013
+PASS clean circuit count is 42674 (same as before) : 42674
+
+budget | start-above overall | start-above among deep | (expected from the v3 fit)
+ 1500 |    5.0% |   35.3% | (5.0% / 35.3%)
+PASS share above 1500 within 1.5 pp of expected
+ 2000 |    2.4% |   17.1% | (2.4% / 17.1%)
+PASS share above 2000 within 1.5 pp of expected
+ 2600 |    0.9% |    6.4% | (0.9% / 6.4%)
+PASS share above 2600 within 1.5 pp of expected
+average start-infeasible share over the 4 budget options (incl. unconstrained): overall 2.1% | deep circuits 14.7%
+
+FINAL: ALL PASS
+
+================ git status (read-only) ================
+ M RL/fhe_rl/env.py
+ M RL/fhe_rl/memory.py
+ M RL/fhe_rl/memory_calib.json
+ M RL/fhe_rl/wrappers.py
+?? RL/fhe_rl/audit_g.py
+?? RL/fhe_rl/audit_pack_dataset.py
+?? RL/fhe_rl/check_packing.py
+?? RL/fhe_rl/check_packing_rule.py
+?? RL/fhe_rl/cv_strict.py
+?? RL/fhe_rl/memory_calib_v2_unpacked.json
+?? RL/fhe_rl/memory_calib_v3.json
+?? RL/fhe_rl/memory_calib_v3b.json
+?? RL/fhe_rl/packing.py
+?? RL/fhe_rl/pred_top.py
+?? RL/fhe_rl/recompute_packed.py
+?? RL/fhe_rl/smoke_pack.py
+?? RL/fhe_rl/time_pack.py
+?? finish/
+?? memory_calib.json
+
+DONE - send me finish/FINISH_REPORT.txt

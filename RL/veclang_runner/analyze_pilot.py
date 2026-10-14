@@ -26,8 +26,9 @@ def f(v, nd=2):
 
 
 def main():
+    temp_dir = Path(__file__).resolve().parent / "temp"
     path = (sys.argv[1] if len(sys.argv) > 1 else
-            "/home/maroua/chehab-unified/RL/veclang_runner/temp/pilot_results.csv")
+            str(temp_dir / "pilot_results.csv"))
     rows = list(csv.DictReader(open(path)))
     n = len(rows)
     out = []
@@ -191,7 +192,7 @@ def main():
 
     report = "\n".join(out)
     print(report)
-    rpath = "/home/maroua/chehab-unified/RL/veclang_runner/temp/pilot_report.md"
+    rpath = str(temp_dir / "pilot_report.md")
     with open(rpath, "w") as fh:
         fh.write(report + "\n")
     print(f"\n[report written to {rpath}]")

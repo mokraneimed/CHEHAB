@@ -125,8 +125,8 @@ def main():
         print(f"{i:>3} {r['est_N']:>6} {r['est_L']:>3} {len(expr):>6} {real:>5} {o:>5} {a:>5}  {m}")
 
     print("\nSUMMARY:", tally)
-    print("  orig   = only the original (senior's) rule matches the real count")
-    print("  agent  = only the agent's rule matches")
+    print("  orig   = only the original baseline rule matches the real count")
+    print("  revised = only the revised rule matches")
     print("  both   = the two rules agree and match (nothing to decide on those)")
     print("  NEITHER= real count follows another rule; examples below")
     for e, labs, real, o, a in neither:

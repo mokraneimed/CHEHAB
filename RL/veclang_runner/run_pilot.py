@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 
 RL_DIR = Path(__file__).resolve().parent.parent
+REPO_ROOT = RL_DIR.parent
 PYTRS_DIR = RL_DIR / "pytrs"
 sys.path.insert(0, str(PYTRS_DIR))
 
@@ -26,8 +27,8 @@ from ckks_memory_estimator import (  # noqa: E402
     estimate_expression_memory, chehab_params,
 )
 
-LATTIGO_BACKEND_DIR = Path("/home/maroua/chehab-unified/lattigo_backend")
-VECLANG_BIN = Path("/home/maroua/chehab-unified/build/RL/veclang_runner/veclang_runner")
+LATTIGO_BACKEND_DIR = REPO_ROOT / "lattigo_backend"
+VECLANG_BIN = REPO_ROOT / "build" / "RL" / "veclang_runner" / "veclang_runner" 
 
 GO_ENV = {
     "GOGC": os.environ.get("GOGC", "100"),
@@ -233,7 +234,7 @@ def measure_one(expr, workdir, env_info, timeout_s):
             _f.write(f"1 {len(names)} 1\n")
             for inp in names:
                 _f.write(f"{inp} 1 1 {_rand.randint(0, 10)}\n")
-        build_dir = Path("/home/maroua/chehab-unified/build/RL/veclang_runner")
+        build_dir = REPO_ROOT / "build" / "RL" / "veclang_runner"
         for fname in ["vectorized_code.txt", "inputs.txt",
                       "fhe_io_example.txt"]:
             shutil.copy2(workdir / fname, build_dir / fname)
@@ -369,12 +370,13 @@ def main():
     ap.add_argument("--timeout", type=int, default=PROVISIONAL_TIMEOUT_S)
     ap.add_argument("--resume", action="store_true",
                     help="reuse measurements already present in the --out CSV")
+    temp_dir = Path(__file__).resolve().parent / "temp"
     ap.add_argument("--out",
-                    default="/home/maroua/chehab-unified/RL/veclang_runner/temp/pilot_results.csv")
+                    default=str(temp_dir / "pilot_results.csv"))
     ap.add_argument("--pairs",
-                    default="/home/maroua/chehab-unified/RL/veclang_runner/temp/pilot_rotation_pairs.csv")
+                    default=str(temp_dir / "pilot_rotation_pairs.csv"))
     ap.add_argument("--exprs",
-                    default="/home/maroua/chehab-unified/RL/veclang_runner/temp/pilot_expressions.txt")
+                    default=str(temp_dir / "pilot_expressions.txt"))
     args = ap.parse_args()
 
     env_info = go_env_info()

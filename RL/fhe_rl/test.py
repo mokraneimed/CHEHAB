@@ -2,7 +2,7 @@ from stable_baselines3 import PPO
 import sys, importlib, time
 from .utils import load_expressions, load_expressions_named, create_rules
 from pytrs import parse_sexpr
-from .memory import MemoryEstimator
+from .memory import MemoryEstimator, extra_metrics
 from .config import get_env_class, get_policy_class
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
@@ -128,6 +128,7 @@ def test_agent(
                 "Budget Violated": budget_violated,
                 "RAM Headroom (MB)": round(budget - final_noise, 2),
                 "Steps": steps,
+                **extra_metrics(test_expr, last_expr, initial_noise, final_noise, budget),
             })
 
             status = "VIOLATED" if budget_violated else "OK"
@@ -160,6 +161,9 @@ def test_agent(
                 "Violation Rate (%)": round(bdf["Budget Violated"].mean() * 100, 1),
                 "Avg RAM Headroom (MB)": round(bdf["RAM Headroom (MB)"].mean(), 2),
                 "Avg Steps": round(bdf["Steps"].mean(), 1),
+                "Started Infeasible (%)": round(bdf["Started Infeasible"].mean() * 100, 1),
+                "Recovered (count)": int(bdf["Recovered"].sum()),
+                "Avg RAM Expansion (%)": round(bdf["RAM Expansion (%)"].mean(), 2),
             })
         pd.DataFrame(summary_rows).to_excel(writer, sheet_name="summary_per_budget", index=False)
 
@@ -341,6 +345,8 @@ def test_agent_v2(
                 "Trajectory Costs": "|".join(str(cp["cost"]) for cp in checkpoints),
                 "Trajectory RAM (MB)": "|".join(f'{cp["noise"]:.2f}' for cp in checkpoints),
                 "_safe_expr": safe_expr,
+                **extra_metrics(test_expr, agent_final["expression"], initial_noise, agent_final["noise"], budget),
+                **extra_metrics(test_expr, safe_expr, initial_noise, safe_noise, budget, prefix="Safe "),
             })
 
             tag = "FEASIBLE" if is_feasible else "INFEAS"
@@ -380,6 +386,11 @@ def test_agent_v2(
                 "Safe Violation Rate (%)": round(bdf["Safe Violated"].mean() * 100, 1),
                 "Safety Activations": int(bdf["Safety Activated"].sum()),
                 "Avg RAM Headroom (MB)": round(bdf["RAM Headroom (MB)"].mean(), 2),
+                "Safe Recovered (count)": int(bdf["Safe Recovered"].sum()),
+                "Safe Avg RAM Expansion (%)": round(bdf["Safe RAM Expansion (%)"].mean(), 2),
+                "Started Infeasible (%)": round(bdf["Started Infeasible"].mean() * 100, 1),
+                "Recovered (count)": int(bdf["Recovered"].sum()),
+                "Avg RAM Expansion (%)": round(bdf["RAM Expansion (%)"].mean(), 2),
             })
         pd.DataFrame(summary_rows).to_excel(writer, sheet_name="summary_per_budget", index=False)
 
