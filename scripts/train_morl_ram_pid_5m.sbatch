@@ -21,7 +21,7 @@ set +u
 if [ -f "/share/apps/NYUAD5/miniconda/3-4.11.0/bin/activate" ]; then
     source /share/apps/NYUAD5/miniconda/3-4.11.0/bin/activate
 fi
-conda activate chehabEnv 2>/dev/null || conda activate chehab 2>/dev/null || true
+conda activate /scratch/mo3135/conda/envs/chehabEnv 2>/dev/null || conda activate /scratch/${USER}/conda/envs/chehabEnv 2>/dev/null || conda activate chehabEnv 2>/dev/null || conda activate chehab 2>/dev/null || true
 set -u
 
 export PYTHONUNBUFFERED=1
