@@ -277,6 +277,57 @@ class TestUnifiedRL(unittest.TestCase):
             model.learn(total_timesteps=16)
             self.assertGreaterEqual(model.num_timesteps, 16)
 
+    def test_10_unified_metrics_integrity(self):
+        """Verify that step() and termination info contains all constrained, MORL, and constraint metrics."""
+        env = fheEnvUnified(
+            self.rules_list,
+            self.test_expressions,
+            max_positions=16,
+            constraint_metric="mem",
+            budget_options=[1500, 2000, 2600, 1000000],
+            verbose=False,
+        )
+        obs, reset_info = env.reset(seed=42)
+        # Check reset info metrics
+        expected_reset_keys = [
+            "expression", "budget", "constraint_value", "noise", "cost",
+            "initial_cost", "c_exec", "initial_ops", "c_keys", "initial_keys",
+            "preference_vector", "mode_name", "rotation_keys"
+        ]
+        for key in expected_reset_keys:
+            self.assertIn(key, reset_info, f"Missing reset key: {key}")
+
+        # Take a valid step
+        valid_actions = np.where(obs["action_mask"] == 1)[0]
+        self.assertGreater(len(valid_actions), 0)
+        obs, reward, term, trunc, step_info = env.step(valid_actions[0])
+
+        # Verify constrained + MORL + constraint keys in step_info
+        expected_step_keys = [
+            # Constrained metrics
+            "cost", "initial_cost", "cost_reduction", "rotation_keys",
+            # MORL metrics
+            "c_exec", "initial_ops", "ops_reduction",
+            "c_keys", "initial_keys", "keys_reduction",
+            "preference_vector", "r_exec", "r_keys",
+            # Constraint metrics
+            "constraint_value", "initial_constraint", "budget",
+            "constraint_metric", "constraint_name", "constraint_unit",
+            "violation", "margin", "is_compliant"
+        ]
+        for key in expected_step_keys:
+            self.assertIn(key, step_info, f"Missing step key: {key}")
+
+        # Check types and sanity
+        self.assertIsInstance(step_info["cost"], (int, float))
+        self.assertIsInstance(step_info["c_exec"], (int, float))
+        self.assertIsInstance(step_info["c_keys"], (int, float))
+        self.assertIsInstance(step_info["is_compliant"], bool)
+        self.assertEqual(step_info["constraint_metric"], "mem")
+        self.assertEqual(step_info["constraint_name"], "Peak RAM")
+        self.assertEqual(step_info["constraint_unit"], "MB")
+
 
 if __name__ == "__main__":
     unittest.main()
+

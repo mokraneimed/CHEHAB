@@ -194,12 +194,17 @@ class fheEnvUnified(gym.Env):
             mode_name = "LOCKED (EVALUATION)"
         else:
             self.current_w, mode_name = self._sample_preference()
+        self.current_mode_name = mode_name
+        self._last_r_vec = np.array([0.0, 0.0], dtype=np.float32)
 
         if self.verbose:
             print(f"\n{BLUE}{'='*40} EPISODE START {'='*40}{RESET}")
-            print(f"{BOLD}{MAGENTA}Optimization Mode{RESET}  : {CYAN}{mode_name}{RESET} (w={self.current_w})")
-            print(f"{BOLD}{MAGENTA}{self.metric_name} Budget{RESET} : {CYAN}{self.budget} {self.metric_unit}{RESET}")
-            print(f"{BOLD}{MAGENTA}Initial {self.metric_name}{RESET}: {YELLOW}{self.initial_constraint:.1f} {self.metric_unit}{RESET}")
+            print(f"{BOLD}{MAGENTA}Optimization Mode    {RESET}: {CYAN}{mode_name}{RESET} (w=[ops={self.current_w[0]:.2f}, keys={self.current_w[1]:.2f}])")
+            print(f"{BOLD}{MAGENTA}Initial Total Cost   {RESET}: {YELLOW}{self.initial_cost}{RESET}")
+            print(f"{BOLD}{MAGENTA}Initial Exec Cost    {RESET}: {YELLOW}{self.initial_ops}{RESET}")
+            print(f"{BOLD}{MAGENTA}Initial Keys Cost    {RESET}: {YELLOW}{self.initial_keys}{RESET}")
+            print(f"{BOLD}{MAGENTA}{self.metric_name} Budget     {RESET}: {CYAN}{self.budget} {self.metric_unit}{RESET}")
+            print(f"{BOLD}{MAGENTA}Initial {self.metric_name:<13}{RESET}: {YELLOW}{self.initial_constraint:.1f} {self.metric_unit}{RESET}")
 
         obs = self._get_obs(self.curr_constraint)
         return obs, {
@@ -208,9 +213,14 @@ class fheEnvUnified(gym.Env):
             "constraint_value": self.curr_constraint,
             "noise": self.curr_constraint,
             "cost": self.current_cost,
+            "initial_cost": self.initial_cost,
             "c_exec": self.curr_ops,
+            "initial_ops": self.initial_ops,
             "c_keys": self.curr_keys,
+            "initial_keys": self.initial_keys,
             "rotation_keys": rotation_steps(self.expression),
+            "preference_vector": self.current_w,
+            "mode_name": self.current_mode_name,
         }
 
     def _get_obs(self, constraint_val: float):
@@ -247,12 +257,19 @@ class fheEnvUnified(gym.Env):
         truncated = False
         reward = 0
 
+        old_cost = self.current_cost
+        old_ops = self.curr_ops
+        old_keys = self.curr_keys
+        old_constraint = self.curr_constraint
+        old_expr = self.expression
+
         if self.verbose:
             print(f"\n{CYAN}{'-'*100}{RESET}")
-            print(f"{BOLD}{MAGENTA}Old expression{RESET}: {YELLOW}{self.expression}{RESET}")
-            print(f"{BOLD}{MAGENTA}Old exec cost      {RESET}: {RED}{self.curr_ops}{RESET}")
-            print(f"{BOLD}{MAGENTA}Old keys cost      {RESET}: {RED}{self.curr_keys}{RESET}")
-            print(f"{BOLD}{MAGENTA}Old {self.metric_name:<14}{RESET}: {RED}{self.curr_constraint:.1f} {self.metric_unit}{RESET}")
+            print(f"{BOLD}{MAGENTA}Old expression       {RESET}: {YELLOW}{old_expr}{RESET}")
+            print(f"{BOLD}{MAGENTA}Old total cost       {RESET}: {RED}{old_cost}{RESET}")
+            print(f"{BOLD}{MAGENTA}Old exec cost        {RESET}: {RED}{old_ops}{RESET}")
+            print(f"{BOLD}{MAGENTA}Old keys cost        {RESET}: {RED}{old_keys}{RESET}")
+            print(f"{BOLD}{MAGENTA}Old {self.metric_name:<17}{RESET}: {RED}{old_constraint:.1f} {self.metric_unit}{RESET}")
 
         if rule_name == "END":
             terminated = True
@@ -287,28 +304,20 @@ class fheEnvUnified(gym.Env):
                 terminated = True
                 reward = self.calculate_final_reward()
 
-        info = {
-            "expression": self.expression,
-            "budget": self.budget,
-            "constraint_value": self.curr_constraint,
-            "noise": self.curr_constraint,
-            "cost": self.current_cost,
-            "c_exec": self.curr_ops,
-            "c_keys": self.curr_keys,
-            "rotation_keys": rotation_steps(self.expression),
-        }
-
         if self.verbose:
             reward_color = GREEN if reward >= 0 else RED
             val_color = GREEN if self.curr_constraint <= self.budget else RED
-            print(f"Episode: {self.episode_count}")
-            print(f"{BOLD}{MAGENTA}New expression{RESET}: {YELLOW}{self.expression}{RESET}")
-            print(f"{BOLD}{MAGENTA}New exec cost      {RESET}: {RED}{self.curr_ops}{RESET}")
-            print(f"{BOLD}{MAGENTA}New keys cost      {RESET}: {RED}{self.curr_keys}{RESET}")
-            print(f"{BOLD}{MAGENTA}New {self.metric_name:<14}{RESET}: {val_color}{self.curr_constraint:.1f} {self.metric_unit}{RESET} (Budget: {self.budget} {self.metric_unit})")
-            print(f"{BOLD}{MAGENTA}Reward        {RESET}: {reward_color}{reward:.4f}{RESET}")
-            print(f"{BOLD}{MAGENTA}Rule name     {RESET}: {CYAN}{rule_name}{RESET}")
-            print(f"{BOLD}{MAGENTA}At position   {RESET}: {BLUE}{pos_idx}{RESET}")
+            print(f"Episode: {self.episode_count} | Step: {self.steps}")
+            print(f"{BOLD}{MAGENTA}New expression       {RESET}: {YELLOW}{self.expression}{RESET}")
+            print(f"{BOLD}{MAGENTA}New total cost       {RESET}: {RED}{self.current_cost}{RESET}")
+            print(f"{BOLD}{MAGENTA}New exec cost        {RESET}: {RED}{self.curr_ops}{RESET}")
+            print(f"{BOLD}{MAGENTA}New keys cost        {RESET}: {RED}{self.curr_keys}{RESET}")
+            print(f"{BOLD}{MAGENTA}New {self.metric_name:<17}{RESET}: {val_color}{self.curr_constraint:.1f} {self.metric_unit}{RESET} (Budget: {self.budget} {self.metric_unit})")
+            print(f"{BOLD}{MAGENTA}Reward (scalar)      {RESET}: {reward_color}{reward:.4f}{RESET}")
+            print(f"{BOLD}{MAGENTA}Reward vector        {RESET}: [r_exec={self._last_r_vec[0]:.4f}, r_keys={self._last_r_vec[1]:.4f}]")
+            print(f"{BOLD}{MAGENTA}Preference w         {RESET}: [w_ops={self.current_w[0]:.2f}, w_keys={self.current_w[1]:.2f}]")
+            print(f"{BOLD}{MAGENTA}Rule name            {RESET}: {CYAN}{rule_name}{RESET}")
+            print(f"{BOLD}{MAGENTA}At position          {RESET}: {BLUE}{pos_idx}{RESET}")
             print(f"{CYAN}{'-'*100}{RESET}")
 
         embedding = self._embed_expression(self.expression)
@@ -344,17 +353,55 @@ class fheEnvUnified(gym.Env):
                 else:
                     reward = cost_reward
 
+        cost_red = ((self.initial_cost - self.current_cost) / max(self.initial_cost, 1e-6)) * 100.0
+        ops_red = ((self.initial_ops - self.curr_ops) / max(self.initial_ops, 1e-6)) * 100.0
+        keys_red = ((self.initial_keys - self.curr_keys) / max(self.initial_keys, 1e-6)) * 100.0
+        is_compliant = bool(self.curr_constraint <= self.budget)
+
+        info = {
+            "expression": self.expression,
+            "budget": self.budget,
+            "constraint_value": self.curr_constraint,
+            "noise": self.curr_constraint,
+            "cost": self.current_cost,
+            "initial_cost": self.initial_cost,
+            "cost_reduction": cost_red / 100.0,
+            "c_exec": self.curr_ops,
+            "initial_ops": self.initial_ops,
+            "ops_reduction": ops_red / 100.0,
+            "c_keys": self.curr_keys,
+            "initial_keys": self.initial_keys,
+            "keys_reduction": keys_red / 100.0,
+            "initial_constraint": self.initial_constraint,
+            "constraint_metric": self.constraint_metric,
+            "constraint_name": self.metric_name,
+            "constraint_unit": self.metric_unit,
+            "violation": max(0.0, self.curr_constraint - self.budget),
+            "margin": self.budget - self.curr_constraint,
+            "is_compliant": is_compliant,
+            "preference_vector": self.current_w,
+            "r_exec": float(self._last_r_vec[0]),
+            "r_keys": float(self._last_r_vec[1]),
+            "rotation_keys": rotation_steps(self.expression),
+        }
+
         if terminated or truncated:
             info["episode"] = {"r": reward, "l": self.steps, "t": None}
-            val_color = GREEN if self.curr_constraint <= self.budget else RED
+            val_color = GREEN if is_compliant else RED
+            status_str = f"{GREEN}COMPLIANT{RESET}" if is_compliant else f"{RED}VIOLATED (+{self.curr_constraint - self.budget:.1f} {self.metric_unit}){RESET}"
+
             if self.verbose:
-                print(f"\n{BOLD}{MAGENTA}Initial exec cost : {YELLOW}{self.initial_ops}{RESET}")
-                print(f"{BOLD}{MAGENTA}Initial keys cost : {YELLOW}{self.initial_keys}{RESET}")
-                print(f"{BOLD}{MAGENTA}Final exec cost   : {GREEN}{self.curr_ops}{RESET}")
-                print(f"{BOLD}{MAGENTA}Final keys cost   : {GREEN}{self.curr_keys}{RESET}")
-                print(f"{BOLD}{MAGENTA}Initial {self.metric_name:<10}: {YELLOW}{self.initial_constraint:.1f} {self.metric_unit}{RESET}")
-                print(f"{BOLD}{MAGENTA}Final {self.metric_name:<12}: {val_color}{self.curr_constraint:.1f} {self.metric_unit}{RESET}")
-                print(f"{BOLD}{MAGENTA}{self.metric_name} Budget   : {CYAN}{self.budget} {self.metric_unit}{RESET}")
+                print(f"\n{BLUE}{'='*30} EPISODE {self.episode_count} SUMMARY {'='*30}{RESET}")
+                print(f"{BOLD}{'Metric':<25} | {'Initial':<12} | {'Final':<12} | {'Change / Status'}{RESET}")
+                print(f"{'-'*75}")
+                print(f"{'Total Cost (Constrained)':<25} | {self.initial_cost:<12} | {self.current_cost:<12} | {cost_red:+.1f}%")
+                print(f"{'Exec Cost (MORL Ops)':<25} | {self.initial_ops:<12} | {self.curr_ops:<12} | {ops_red:+.1f}%")
+                print(f"{'Keys Cost (MORL Keys)':<25} | {self.initial_keys:<12} | {self.curr_keys:<12} | {keys_red:+.1f}%")
+                print(f"{self.metric_name + ' (' + self.metric_unit + ')':<25} | {self.initial_constraint:<12.1f} | {self.curr_constraint:<12.1f} | {status_str}")
+                print(f"{self.metric_name + ' Budget':<25} | {self.budget:<12} {self.metric_unit} | {'--':<12} | {'Margin: ' + str(round(self.budget - self.curr_constraint, 1)) + ' ' + self.metric_unit}")
+                print(f"{'Preference Vector':<25} | w=[ops={self.current_w[0]:.2f}, keys={self.current_w[1]:.2f}] (Mode: {self.current_mode_name})")
+                print(f"{'Episode Length':<25} | {self.steps} steps | Cumulative Reward: {reward:.4f}")
+                print(f"{BLUE}{'='*77}{RESET}\n")
 
         obs = self._get_obs(self.curr_constraint)
         return obs, reward, terminated, truncated, info
@@ -383,10 +430,12 @@ class fheEnvUnified(gym.Env):
 
     def calculate_intermediate_reward(self, new_ops: float, new_keys: float) -> float:
         r_vec = self._reward_vector(self.curr_ops, new_ops, self.curr_keys, new_keys)
+        self._last_r_vec = r_vec
         return self._compose_reward(r_vec)
 
     def calculate_final_reward(self) -> float:
         r_vec = self._reward_vector(self.initial_ops, self.curr_ops, self.initial_keys, self.curr_keys)
+        self._last_r_vec = r_vec
         return self._compose_reward(r_vec) * 100
 
     def get_cost(self, expr: str) -> float:

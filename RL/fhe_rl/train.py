@@ -12,7 +12,7 @@ from .policy import HierarchicalMaskablePolicy
 from .policy_film_b import HierarchicalMaskablePolicyFiLMB
 from .utils import load_expressions, create_rules
 from .logger import log_training_details
-from .callbacks import linear_schedule, EntCoefScheduler, ParetoEvalCallback
+from .callbacks import linear_schedule, EntCoefScheduler, ParetoEvalCallback, UnifiedMetricsCallback
 from .pareto import generate_pref_list
 
 def set_random_seed(seed: int = 42):
@@ -227,11 +227,13 @@ def train_agent(
         remaining_steps = total_timesteps
         print(f"Starting fresh training: {total_timesteps} total steps")
 
+    unified_metrics_cb = UnifiedMetricsCallback(pid_wrapper=pid_wrapper, verbose=1)
+
     model.learn(
         total_timesteps=remaining_steps, 
         log_interval=1, 
         progress_bar=True, 
-        callback=[ent_callback, pareto_eval_cb, checkpoint_callback],
+        callback=[ent_callback, pareto_eval_cb, checkpoint_callback, unified_metrics_cb],
         reset_num_timesteps=(checkpoint_path is None)
     )
     
