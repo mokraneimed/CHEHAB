@@ -63,10 +63,25 @@ def train_agent(
     pytrs_framework = spec["pytrs"]
     
     # Common setup
-    benchmarks = load_expressions("./fhe_rl/datasets/benchmarks.txt")
+    benchmarks_file = "./fhe_rl/datasets/benchmarks.txt"
+    if not os.path.exists(benchmarks_file):
+        benchmarks_file = os.path.join(os.path.dirname(__file__), "datasets", "benchmarks.txt")
+    benchmarks = load_expressions(benchmarks_file)
+
+    if not os.path.exists(expressions_file):
+        alt_expr = os.path.join(os.path.dirname(__file__), "datasets", os.path.basename(expressions_file))
+        if os.path.exists(alt_expr):
+            expressions_file = alt_expr
     expressions = load_expressions(expressions_file)
+
     max_positions = 16
-    rules_list = create_rules("rules.txt", "rotations_rules.txt")
+    rules_p = "rules.txt"
+    rot_p = "rotations_rules.txt"
+    if not os.path.exists(rules_p):
+        rules_p = os.path.join(os.path.dirname(os.path.dirname(__file__)), "rules.txt")
+    if not os.path.exists(rot_p):
+        rot_p = os.path.join(os.path.dirname(os.path.dirname(__file__)), "rotations_rules.txt")
+    rules_list = create_rules(rules_p, rot_p)
     rules_list["END"] = None
     
     job_id = os.environ.get("SLURM_JOB_ID", "jobid")

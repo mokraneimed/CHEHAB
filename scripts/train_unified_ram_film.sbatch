@@ -26,9 +26,17 @@ set -u
 
 export PYTHONUNBUFFERED=1
 
-# Determine project root dynamically from script location
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJ_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# Determine project root dynamically from SLURM_SUBMIT_DIR or fallback
+if [ -n "${SLURM_SUBMIT_DIR:-}" ] && [ -d "${SLURM_SUBMIT_DIR}/RL" ]; then
+    PROJ_ROOT="$SLURM_SUBMIT_DIR"
+elif [ -d "/scratch/${USER}/chehab-unified/RL" ]; then
+    PROJ_ROOT="/scratch/${USER}/chehab-unified"
+elif [ -d "/scratch/mo3135/chehab-unified/RL" ]; then
+    PROJ_ROOT="/scratch/mo3135/chehab-unified"
+else
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    PROJ_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+fi
 
 mkdir -p "$PROJ_ROOT/logs"
 
