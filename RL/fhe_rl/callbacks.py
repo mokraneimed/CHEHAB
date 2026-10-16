@@ -3,6 +3,7 @@ from stable_baselines3.common.evaluation import evaluate_policy
 import numpy as np
 import torch
 import os
+import time
 
 
 class EntCoefScheduler(BaseCallback):
@@ -48,9 +49,9 @@ class ParetoEvalCallback(BaseCallback):
     def _on_step(self) -> bool:
         if self.n_calls % self.eval_freq == 0:
             if self.verbose > 0:
-                print(f"\n{BLUE}{'='*95}{RESET}")
-                print(f"{BOLD}Step {self.num_timesteps:,}: Starting Pareto & Safety Evaluation ({len(self.pref_list)} front points, {self.n_eval_episodes} benchmarks each){RESET}")
-                print(f"{BLUE}{'='*95}{RESET}")
+                print(f"\n{BLUE}{'='*105}{RESET}")
+                print(f"{BOLD}Step {self.num_timesteps:,}: Starting Pareto & Safe Execution Evaluation ({len(self.pref_list)} front points, {self.n_eval_episodes} benchmarks each){RESET}")
+                print(f"{BLUE}{'='*105}{RESET}")
 
             GREEN = "\033[92m"
             RED = "\033[91m"
@@ -64,9 +65,14 @@ class ParetoEvalCallback(BaseCallback):
             all_cost_reds = []
             all_exec_reds = []
             all_keys_reds = []
+            all_safe_cost_reds = []
+            all_safe_exec_reds = []
+            all_safe_keys_reds = []
             all_compliances = []
             all_violations = []
             all_margins = []
+            all_safety_activated = []
+            all_rl_times_ms = []
 
             point_summaries = []
 
@@ -79,20 +85,26 @@ class ParetoEvalCallback(BaseCallback):
                 pt_cost_reds = []
                 pt_exec_reds = []
                 pt_keys_reds = []
+                pt_safe_cost_reds = []
+                pt_safe_exec_reds = []
+                pt_safe_keys_reds = []
                 pt_compliances = []
                 pt_violations = []
                 pt_margins = []
                 pt_constraints = []
                 pt_budgets = []
+                pt_safety_activated = []
+                pt_rl_times_ms = []
                 metric_name = "Peak RAM"
                 metric_unit = "MB"
 
                 for _ in range(self.n_eval_episodes):
+                    t_start = time.perf_counter()
                     obs = self.eval_env.reset()
                     done = False
                     ep_rew = 0.0
                     ep_len = 0
-                    last_info = {}
+                    checkpoints = []
 
                     while not done:
                         action, _ = self.model.predict(obs, deterministic=self.deterministic)
@@ -100,28 +112,88 @@ class ParetoEvalCallback(BaseCallback):
                         ep_rew += float(reward[0])
                         ep_len += 1
                         done = bool(dones[0])
-                        last_info = infos[0]
+                        info = infos[0]
+
+                        checkpoints.append({
+                            "cost": float(info.get("cost", 0.0)),
+                            "ops": float(info.get("c_exec", 0.0)),
+                            "keys": float(info.get("c_keys", 0.0)),
+                            "constraint": float(info.get("constraint_value", 0.0)),
+                            "budget": float(info.get("budget", 1.0)),
+                            "initial_cost": float(info.get("initial_cost", 1.0)),
+                            "initial_ops": float(info.get("initial_ops", 1.0)),
+                            "initial_keys": float(info.get("initial_keys", 1.0)),
+                            "initial_constraint": float(info.get("initial_constraint", 0.0)),
+                        })
+
+                    rl_time_ms = (time.perf_counter() - t_start) * 1000.0
+                    terminal = checkpoints[-1]
+                    bgt = terminal["budget"]
+                    raw_constraint = terminal["constraint"]
+
+                    # Safety Checkpointing Rollback (NATO-SC / constrained system)
+                    valid_checkpoints = [cp for cp in checkpoints if cp["constraint"] <= bgt]
+                    if valid_checkpoints:
+                        # Best state among those strictly meeting the constraint
+                        best_safe = min(valid_checkpoints, key=lambda cp: cp["cost"])
+                        safety_activated = (best_safe is not terminal)
+                    else:
+                        best_safe = {
+                            "cost": terminal["initial_cost"],
+                            "ops": terminal["initial_ops"],
+                            "keys": terminal["initial_keys"],
+                            "constraint": terminal["initial_constraint"],
+                        }
+                        safety_activated = True
+
+                    init_c = max(terminal["initial_cost"], 1e-6)
+                    init_o = max(terminal["initial_ops"], 1e-6)
+                    init_k = max(terminal["initial_keys"], 1e-6)
+
+                    # Raw agent reductions
+                    raw_cost_red = (init_c - terminal["cost"]) / init_c * 100.0
+                    raw_exec_red = (init_o - terminal["ops"]) / init_o * 100.0
+                    raw_keys_red = (init_k - terminal["keys"]) / init_k * 100.0
+
+                    # Safe verified reductions (guaranteed within budget)
+                    safe_cost_red = (init_c - best_safe["cost"]) / init_c * 100.0
+                    safe_exec_red = (init_o - best_safe["ops"]) / init_o * 100.0
+                    safe_keys_red = (init_k - best_safe["keys"]) / init_k * 100.0
+
+                    is_safe = (raw_constraint <= bgt)
+                    violation = max(0.0, raw_constraint - bgt)
+                    margin = bgt - raw_constraint
 
                     pt_rewards.append(ep_rew)
                     pt_lengths.append(ep_len)
-                    pt_cost_reds.append(last_info.get("cost_reduction", 0.0) * 100.0)
-                    pt_exec_reds.append(last_info.get("ops_reduction", 0.0) * 100.0)
-                    pt_keys_reds.append(last_info.get("keys_reduction", 0.0) * 100.0)
-                    is_safe = last_info.get("is_compliant", True)
+                    pt_cost_reds.append(raw_cost_red)
+                    pt_exec_reds.append(raw_exec_red)
+                    pt_keys_reds.append(raw_keys_red)
+                    pt_safe_cost_reds.append(safe_cost_red)
+                    pt_safe_exec_reds.append(safe_exec_red)
+                    pt_safe_keys_reds.append(safe_keys_red)
                     pt_compliances.append(1.0 if is_safe else 0.0)
-                    pt_violations.append(last_info.get("violation", 0.0))
-                    pt_margins.append(last_info.get("margin", 0.0))
-                    pt_constraints.append(last_info.get("final_constraint", 0.0))
-                    pt_budgets.append(last_info.get("budget", 0))
-                    metric_name = last_info.get("constraint_name", metric_name)
-                    metric_unit = last_info.get("constraint_unit", metric_unit)
+                    pt_violations.append(violation)
+                    pt_margins.append(margin)
+                    pt_constraints.append(raw_constraint)
+                    pt_budgets.append(bgt)
+                    pt_safety_activated.append(1.0 if safety_activated else 0.0)
+                    pt_rl_times_ms.append(rl_time_ms)
+
+                    metric_name = terminal.get("constraint_name", metric_name)
+                    metric_unit = terminal.get("constraint_unit", metric_unit)
 
                 mean_r = float(np.mean(pt_rewards))
                 mean_l = float(np.mean(pt_lengths))
                 mean_cost_red = float(np.mean(pt_cost_reds))
                 mean_exec_red = float(np.mean(pt_exec_reds))
                 mean_keys_red = float(np.mean(pt_keys_reds))
+                mean_safe_cost_red = float(np.mean(pt_safe_cost_reds))
+                mean_safe_exec_red = float(np.mean(pt_safe_exec_reds))
+                mean_safe_keys_red = float(np.mean(pt_safe_keys_reds))
                 safe_rate = float(np.mean(pt_compliances)) * 100.0
+                safety_act_rate = float(np.mean(pt_safety_activated)) * 100.0
+                mean_rl_time = float(np.mean(pt_rl_times_ms))
                 mean_viol = float(np.mean(pt_violations))
                 mean_cons = float(np.mean(pt_constraints))
                 mean_bgt = float(np.mean(pt_budgets))
@@ -131,27 +203,39 @@ class ParetoEvalCallback(BaseCallback):
                 all_cost_reds.append(mean_cost_red)
                 all_exec_reds.append(mean_exec_red)
                 all_keys_reds.append(mean_keys_red)
+                all_safe_cost_reds.append(mean_safe_cost_red)
+                all_safe_exec_reds.append(mean_safe_exec_red)
+                all_safe_keys_reds.append(mean_safe_keys_red)
                 all_compliances.extend(pt_compliances)
                 all_violations.extend(pt_violations)
                 all_margins.extend(pt_margins)
+                all_safety_activated.extend(pt_safety_activated)
+                all_rl_times_ms.extend(pt_rl_times_ms)
 
                 # Log per-point metrics to TensorBoard
                 self.logger.record(f"eval/reward_w_{w[1]:.2f}", mean_r)
                 self.logger.record(f"eval/safe_rate_w_{w[1]:.2f}", safe_rate)
-                self.logger.record(f"eval/cost_red_pct_w_{w[1]:.2f}", mean_cost_red)
-                self.logger.record(f"eval/exec_red_pct_w_{w[1]:.2f}", mean_exec_red)
-                self.logger.record(f"eval/keys_red_pct_w_{w[1]:.2f}", mean_keys_red)
+                self.logger.record(f"eval/safe_exec_red_w_{w[1]:.2f}", mean_safe_exec_red)
+                self.logger.record(f"eval/safe_cost_red_w_{w[1]:.2f}", mean_safe_cost_red)
+                self.logger.record(f"eval/raw_exec_red_w_{w[1]:.2f}", mean_exec_red)
+                self.logger.record(f"eval/safety_act_rate_w_{w[1]:.2f}", safety_act_rate)
+                self.logger.record(f"eval/rl_time_ms_w_{w[1]:.2f}", mean_rl_time)
 
                 point_summaries.append({
                     "p_idx": p_idx + 1,
                     "w": w,
                     "mean_r": mean_r,
-                    "cost_red": mean_cost_red,
-                    "exec_red": mean_exec_red,
-                    "keys_red": mean_keys_red,
+                    "raw_cost_red": mean_cost_red,
+                    "safe_cost_red": mean_safe_cost_red,
+                    "raw_exec_red": mean_exec_red,
+                    "safe_exec_red": mean_safe_exec_red,
+                    "raw_keys_red": mean_keys_red,
+                    "safe_keys_red": mean_safe_keys_red,
                     "constraint": mean_cons,
                     "budget": mean_bgt,
                     "safe_rate": safe_rate,
+                    "safety_act": safety_act_rate,
+                    "rl_time_ms": mean_rl_time,
                     "violations": int(len(pt_compliances) - sum(pt_compliances)),
                     "metric_name": metric_name,
                     "metric_unit": metric_unit,
@@ -164,8 +248,13 @@ class ParetoEvalCallback(BaseCallback):
             current_mean_length = float(np.mean(all_lengths))
             current_safe_rate = float(np.mean(all_compliances)) * 100.0
             current_mean_cost_red = float(np.mean(all_cost_reds))
+            current_mean_safe_cost_red = float(np.mean(all_safe_cost_reds))
             current_mean_exec_red = float(np.mean(all_exec_reds))
+            current_mean_safe_exec_red = float(np.mean(all_safe_exec_reds))
             current_mean_keys_red = float(np.mean(all_keys_reds))
+            current_mean_safe_keys_red = float(np.mean(all_safe_keys_reds))
+            current_safety_act_rate = float(np.mean(all_safety_activated)) * 100.0
+            current_avg_rl_time_ms = float(np.mean(all_rl_times_ms))
             current_mean_violation = float(np.mean(all_violations))
             current_mean_margin = float(np.mean(all_margins))
             total_violations = int(len(all_compliances) - sum(all_compliances))
@@ -174,38 +263,45 @@ class ParetoEvalCallback(BaseCallback):
             self.logger.record("eval/pareto_avg_reward", current_mean_reward)
             self.logger.record("eval/pareto_avg_ep_length", current_mean_length)
             self.logger.record("eval/pareto_safe_compliance_rate", current_safe_rate)
-            self.logger.record("eval/pareto_avg_cost_red_pct", current_mean_cost_red)
-            self.logger.record("eval/pareto_avg_exec_red_pct", current_mean_exec_red)
-            self.logger.record("eval/pareto_avg_keys_red_pct", current_mean_keys_red)
+            self.logger.record("eval/pareto_safety_rollback_rate", current_safety_act_rate)
+            self.logger.record("eval/pareto_avg_safe_exec_red_pct", current_mean_safe_exec_red)
+            self.logger.record("eval/pareto_avg_raw_exec_red_pct", current_mean_exec_red)
+            self.logger.record("eval/pareto_avg_safe_cost_red_pct", current_mean_safe_cost_red)
+            self.logger.record("eval/pareto_avg_raw_cost_red_pct", current_mean_cost_red)
+            self.logger.record("eval/pareto_avg_safe_keys_red_pct", current_mean_safe_keys_red)
+            self.logger.record("eval/pareto_avg_rl_time_ms", current_avg_rl_time_ms)
             self.logger.record("eval/pareto_avg_violation", current_mean_violation)
             self.logger.record("eval/pareto_avg_margin", current_mean_margin)
 
             # Print Detailed Evaluation Table
             if self.verbose > 0:
-                print(f"{BOLD}{'Pt':<4} | {'Preference w':<24} | {'Total Red%':<11} | {'Exec Red%':<11} | {'Keys Red%':<11} | {'Avg ' + metric_name:<16} | {'Safety Status'}{RESET}")
-                print(f"{'-'*95}")
+                print(f"{BOLD}{'Pt':<3} | {'Preference w':<24} | {'Exec Red% (Safe/Raw)':<22} | {'Cost Red% (Safe/Raw)':<22} | {'Avg ' + metric_name:<14} | {'Safe Status / Rollback'}{RESET}")
+                print(f"{'-'*105}")
                 for s in point_summaries:
                     safe_color = GREEN if s["safe_rate"] >= 100.0 else (YELLOW if s["safe_rate"] >= 80.0 else RED)
-                    safe_str = f"{safe_color}{s['safe_rate']:>5.1f}% SAFE ({s['violations']} viol){RESET}"
+                    safe_str = f"{safe_color}{s['safe_rate']:>5.1f}% SAFE{RESET} (Rollback: {s['safety_act']:.0f}%)"
+                    exec_str = f"{s['safe_exec_red']:>+5.1f}% / {s['raw_exec_red']:>+5.1f}%"
+                    cost_str = f"{s['safe_cost_red']:>+5.1f}% / {s['raw_cost_red']:>+5.1f}%"
                     print(
-                        f"#{s['p_idx']:<3} | "
+                        f"#{s['p_idx']:<2} | "
                         f"[ops={s['w'][0]:.2f}, keys={s['w'][1]:.2f}] | "
-                        f"{s['cost_red']:>+9.1f}% | "
-                        f"{s['exec_red']:>+9.1f}% | "
-                        f"{s['keys_red']:>+9.1f}% | "
-                        f"{s['constraint']:>6.1f} / {s['budget']:<4.0f} {s['metric_unit']} | "
+                        f"{exec_str:<22} | "
+                        f"{cost_str:<22} | "
+                        f"{s['constraint']:>5.1f} / {s['budget']:<4.0f} {s['metric_unit']} | "
                         f"{safe_str}"
                     )
-                print(f"{'-'*95}")
+                print(f"{'-'*105}")
                 overall_color = GREEN if current_safe_rate >= 100.0 else (YELLOW if current_safe_rate >= 80.0 else RED)
                 print(f"{BOLD}Front Summary (Step {self.num_timesteps:,}):{RESET}")
-                print(f"  • {BOLD}Mean Pareto Reward{RESET}     : {CYAN}{current_mean_reward:.4f}{RESET} +/- {np.std(all_means):.4f}")
-                print(f"  • {BOLD}Safe Compliance Rate{RESET}   : {overall_color}{current_safe_rate:.1f}% SAFE{RESET} ({total_violations} total violations / {len(all_compliances)} evaluations)")
-                print(f"  • {BOLD}Avg Total Cost Red% {RESET}   : {GREEN if current_mean_cost_red > 0 else RED}{current_mean_cost_red:+.1f}%{RESET}")
-                print(f"  • {BOLD}Avg Exec Cost Red%  {RESET}   : {GREEN if current_mean_exec_red > 0 else RED}{current_mean_exec_red:+.1f}%{RESET} (Ops)")
-                print(f"  • {BOLD}Avg Keys Cost Red%  {RESET}   : {GREEN if current_mean_keys_red > 0 else RED}{current_mean_keys_red:+.1f}%{RESET} (Keys)")
-                print(f"  • {BOLD}Avg Safe Headroom   {RESET}   : {CYAN}{current_mean_margin:+.1f} {metric_unit}{RESET}")
-                print(f"  • {BOLD}Avg Episode Length  {RESET}   : {current_mean_length:.1f} steps")
+                print(f"  • {BOLD}Mean Pareto Reward{RESET}        : {CYAN}{current_mean_reward:.4f}{RESET} +/- {np.std(all_means):.4f}")
+                print(f"  • {BOLD}Safe Compliance Rate{RESET}      : {overall_color}{current_safe_rate:.1f}% SAFE{RESET} ({total_violations} total violations / {len(all_compliances)} evaluations)")
+                print(f"  • {BOLD}Safety Rollback Rate{RESET}      : {CYAN}{current_safety_act_rate:.1f}%{RESET} (rescued infeasible trajectories)")
+                print(f"  • {BOLD}Safe Exec Cost Red% {RESET}      : {GREEN if current_mean_safe_exec_red > 0 else RED}{current_mean_safe_exec_red:+.1f}%{RESET} (Raw: {current_mean_exec_red:+.1f}%) [FHE Exec Time/Ops]")
+                print(f"  • {BOLD}Safe Total Cost Red%{RESET}      : {GREEN if current_mean_safe_cost_red > 0 else RED}{current_mean_safe_cost_red:+.1f}%{RESET} (Raw: {current_mean_cost_red:+.1f}%)")
+                print(f"  • {BOLD}Safe Keys Cost Red% {RESET}      : {GREEN if current_mean_safe_keys_red > 0 else RED}{current_mean_safe_keys_red:+.1f}%{RESET} (Raw: {current_mean_keys_red:+.1f}%)")
+                print(f"  • {BOLD}Avg Safe Headroom   {RESET}      : {CYAN}{current_mean_margin:+.1f} {metric_unit}{RESET}")
+                print(f"  • {BOLD}Avg RL Inference Time{RESET}     : {current_avg_rl_time_ms:.1f} ms / benchmark")
+                print(f"  • {BOLD}Avg Episode Length  {RESET}      : {current_mean_length:.1f} steps")
 
             # Model Checkpointing for Best Score
             if current_mean_reward > self.best_mean_reward:
@@ -215,7 +311,7 @@ class ParetoEvalCallback(BaseCallback):
                     self.model.save(os.path.join(self.best_model_save_path, "best_model"))
                 self.best_mean_reward = current_mean_reward
 
-            print(f"{BLUE}{'='*95}{RESET}\n")
+            print(f"{BLUE}{'='*105}{RESET}\n")
             self.logger.dump(step=self.num_timesteps)
 
         return True
