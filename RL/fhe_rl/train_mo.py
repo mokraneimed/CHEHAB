@@ -6,7 +6,7 @@ from stable_baselines3 import PPO
 from .utils  import load_expressions, create_rules, load_embeddings
 from .logger import log_training_details
 from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize,DummyVecEnv
-from .callbacks import linear_schedule, EntCoefScheduler, ParetoEvalCallback
+from .callbacks import linear_schedule, EntCoefScheduler, ParetoEvalCallback, UnifiedMetricsCallback
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
 
 
@@ -165,11 +165,18 @@ def train_agent_mo(expressions_file: str, embeddings_model, total_timesteps: int
     
 
 
+    unified_metrics_cb = UnifiedMetricsCallback(
+        pid_wrapper=None, 
+        total_timesteps=remaining_steps, 
+        progress_freq=2000, 
+        verbose=1
+    )
+
     model.learn(
         total_timesteps=remaining_steps, 
         log_interval=1, 
         progress_bar=True, 
-        callback=[ent_callback, pareto_eval_cb, checkpoint_callback],
+        callback=[ent_callback, pareto_eval_cb, checkpoint_callback, unified_metrics_cb],
         reset_num_timesteps = (checkpoint_path is None)
     )
     model.save(run_name)    

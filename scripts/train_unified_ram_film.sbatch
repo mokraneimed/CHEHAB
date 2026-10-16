@@ -45,7 +45,8 @@ export PYTHONPATH="$PROJ_ROOT/RL:$PROJ_ROOT/RL/pytrs:${PYTHONPATH:-}"
 # Budget Encoding: film (Feature-wise Linear Modulation)
 # Policy Variant:  film_a (FiLM on budget features, Pareto-fused)
 # Timesteps:       5,000,000
-# Workers:         8 parallel environments across 8 CPU cores
+# Eval Freq:       10,000 timesteps
+# Workers:         8 parallel environments across 16 CPU cores
 # ═══════════════════════════════════════════════════════════════
 CONSTRAINT="mem"
 BUDGETS="1500,2000,2600,1000000"
@@ -54,6 +55,7 @@ ALGO="lagrangian_pid"
 ENCODING="film"
 VARIANT="film_a"
 TIMESTEPS=5000000
+EVAL_FREQ=10000
 NUM_ENVS=8
 
 echo "════════════════════════════════════════════"
@@ -65,6 +67,7 @@ echo "  Algo:            $ALGO"
 echo "  Budget Encoding: $ENCODING"
 echo "  Policy Variant:  $VARIANT"
 echo "  Timesteps:       $TIMESTEPS"
+echo "  Eval Freq:       Every $EVAL_FREQ timesteps"
 echo "  Workers:         $NUM_ENVS parallel envs"
 echo "  Job ID:          ${SLURM_JOB_ID:-local}"
 echo "  Alerts to:       mo3135@nyu.edu"
@@ -76,6 +79,7 @@ stdbuf -oL -eL python -u -m fhe_rl \
     --constraint "$CONSTRAINT" \
     --budgets "$BUDGETS" \
     --timesteps $TIMESTEPS \
+    --eval_freq $EVAL_FREQ \
     --num_envs $NUM_ENVS \
     --method "$METHOD" \
     --algo "$ALGO" \

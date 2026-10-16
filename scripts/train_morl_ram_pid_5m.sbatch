@@ -4,7 +4,7 @@
 #SBATCH --mem 64GB
 #SBATCH -N 1
 #SBATCH -n 1
-#SBATCH -c 8
+#SBATCH -c 16
 #SBATCH -t 7-00:00:00
 
 # Email notifications on completion or failure
@@ -42,12 +42,14 @@ export PYTHONPATH="$PROJ_ROOT/RL:$PROJ_ROOT/RL/pytrs:${PYTHONPATH:-}"
 # Algo:       lagrangian_pid (PID Adaptive Multiplier)
 # Budgets:    1500, 2000, 2600, 1000000 (MB)
 # Timesteps:  5,000,000
-# Workers:    8 parallel environments across 8 CPU cores
+# Eval Freq:  10,000 timesteps
+# Workers:    8 parallel environments across 16 CPU cores
 # ═══════════════════════════════════════════════════════════════
 METHOD="nato_sc"
 ALGO="lagrangian_pid"
 BUDGETS="1500,2000,2600,1000000"
 TIMESTEPS=5000000
+EVAL_FREQ=10000
 NUM_ENVS=8
 
 echo "════════════════════════════════════════════"
@@ -56,7 +58,8 @@ echo "  Algorithm:   $ALGO"
 echo "  Method:      $METHOD"
 echo "  Budgets:     $BUDGETS"
 echo "  Timesteps:   $TIMESTEPS"
-echo "  Workers:     $NUM_ENVS parallel envs (8 CPUs)"
+echo "  Eval Freq:   Every $EVAL_FREQ timesteps"
+echo "  Workers:     $NUM_ENVS parallel envs (16 CPUs)"
 echo "  Job ID:      ${SLURM_JOB_ID:-local}"
 echo "  User:        mo3135 (alert to mo3135@nyu.edu)"
 echo "════════════════════════════════════════════"
@@ -64,6 +67,7 @@ echo "════════════════════════�
 stdbuf -oL -eL python -u -m fhe_rl \
     --framework morl train \
     --timesteps $TIMESTEPS \
+    --eval_freq $EVAL_FREQ \
     --algo "$ALGO" \
     --method "$METHOD" \
     --budgets "$BUDGETS" \

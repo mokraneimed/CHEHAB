@@ -46,7 +46,7 @@ def train_agent(
     pref_mode: str = "pareto",
     denom_factor: int = 4,
     curriculum: bool = False,
-    eval_freq: int = 50000,
+    eval_freq: int = 10000,
 ):
     set_random_seed(seed)
     
@@ -227,7 +227,7 @@ def train_agent(
         remaining_steps = total_timesteps
         print(f"Starting fresh training: {total_timesteps} total steps")
 
-    unified_metrics_cb = UnifiedMetricsCallback(pid_wrapper=pid_wrapper, verbose=1)
+    unified_metrics_cb = UnifiedMetricsCallback(pid_wrapper=pid_wrapper, total_timesteps=remaining_steps, progress_freq=2000, verbose=1)
 
     model.learn(
         total_timesteps=remaining_steps, 

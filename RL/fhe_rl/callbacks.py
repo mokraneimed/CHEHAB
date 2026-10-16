@@ -1,3 +1,4 @@
+from collections import deque
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.evaluation import evaluate_policy
 import numpy as np
@@ -26,7 +27,7 @@ class ParetoEvalCallback(BaseCallback):
     def __init__(self, eval_env, pref_list, 
                  best_model_save_path=None, 
                  log_path=None, 
-                 eval_freq=512, 
+                 eval_freq=10000, 
                  n_eval_episodes=5, 
                  deterministic=True, 
                  verbose=1):
@@ -46,11 +47,16 @@ class ParetoEvalCallback(BaseCallback):
         if self.best_model_save_path is not None:
             os.makedirs(self.best_model_save_path, exist_ok=True)
 
+    def _init_callback(self) -> None:
+        super()._init_callback()
+        if self.eval_freq > 0 and self.training_env is not None:
+            self.eval_freq = max(self.eval_freq // self.training_env.num_envs, 1)
+
     def _on_step(self) -> bool:
         if self.n_calls % self.eval_freq == 0:
             if self.verbose > 0:
-                print(f"\n{BLUE}{'='*105}{RESET}")
-                print(f"{BOLD}Step {self.num_timesteps:,}: Starting Pareto & Safe Execution Evaluation ({len(self.pref_list)} front points, {self.n_eval_episodes} benchmarks each){RESET}")
+                print(f"\n{BLUE}{'='*105}{RESET}", flush=True)
+                print(f"{BOLD}Step {self.num_timesteps:,} [Evaluation]: Starting Pareto & Safe Execution Evaluation ({len(self.pref_list)} front points, {self.n_eval_episodes} benchmarks each){RESET}", flush=True)
                 print(f"{BLUE}{'='*105}{RESET}")
 
             GREEN = "\033[92m"
@@ -311,7 +317,7 @@ class ParetoEvalCallback(BaseCallback):
                     self.model.save(os.path.join(self.best_model_save_path, "best_model"))
                 self.best_mean_reward = current_mean_reward
 
-            print(f"{BLUE}{'='*105}{RESET}\n")
+            print(f"{BLUE}{'='*105}{RESET}\n", flush=True)
             self.logger.dump(step=self.num_timesteps)
 
         return True
@@ -365,23 +371,27 @@ def linear_schedule(start: float, end: float = 0.0):
 
 
 class UnifiedMetricsCallback(BaseCallback):
-    """Tracks and logs comprehensive metrics from the unified environment to TensorBoard.
-    
-    Logs:
-    - unified/cost_final_mean
-    - unified/cost_reduction_pct_mean
-    - unified/exec_cost_final_mean
-    - unified/exec_reduction_pct_mean
-    - unified/keys_cost_final_mean
-    - unified/keys_reduction_pct_mean
-    - unified/constraint_final_mean
-    - unified/violation_mean
-    - unified/compliance_rate
-    - unified/lagrangian_lambda
+    """Tracks and logs comprehensive metrics from the unified environment to TensorBoard
+    and reports live step progress, FPS, ETA, and constraint status to the console and log files.
     """
-    def __init__(self, pid_wrapper=None, verbose: int = 0):
+    def __init__(self, pid_wrapper=None, total_timesteps: int = 5000000, progress_freq: int = 2000, verbose: int = 1):
         super().__init__(verbose)
         self.pid_wrapper = pid_wrapper
+        self.total_timesteps = total_timesteps
+        self.progress_freq = progress_freq
+        self.last_progress_step = 0
+        self.start_time = None
+        self.last_step_time = None
+        self.last_step_count = 0
+        
+        # Rolling history for responsive real-time status reporting
+        self.recent_cost_reds = deque(maxlen=100)
+        self.recent_ops_reds = deque(maxlen=100)
+        self.recent_keys_reds = deque(maxlen=100)
+        self.recent_compliances = deque(maxlen=100)
+        self.recent_constraints = deque(maxlen=100)
+        
+        # Per-rollout metrics for TensorBoard logging
         self.ep_costs = []
         self.ep_cost_reductions = []
         self.ep_ops = []
@@ -392,33 +402,120 @@ class UnifiedMetricsCallback(BaseCallback):
         self.ep_violations = []
         self.ep_compliances = []
 
+    def _init_callback(self) -> None:
+        super()._init_callback()
+        self.start_time = time.time()
+        self.last_step_time = self.start_time
+        self.last_step_count = self.num_timesteps
+        self.last_progress_step = self.num_timesteps
+
     def _on_step(self) -> bool:
+        if self.start_time is None:
+            self.start_time = time.time()
+            self.last_step_time = self.start_time
+            self.last_step_count = self.num_timesteps
+            self.last_progress_step = self.num_timesteps
+
         infos = self.locals.get("infos", [])
         dones = self.locals.get("dones", [])
         for done, info in zip(dones, infos):
             if done and "final_cost" in info:
+                cost_red = info.get("cost_reduction", 0.0) * 100.0
+                ops_red = info.get("ops_reduction", 0.0) * 100.0
+                keys_red = info.get("keys_reduction", 0.0) * 100.0
+                c_val = info.get("final_constraint", 0.0)
+                is_comp = 1.0 if info.get("is_compliant", True) else 0.0
+
                 self.ep_costs.append(info["final_cost"])
-                self.ep_cost_reductions.append(info.get("cost_reduction", 0.0) * 100.0)
+                self.ep_cost_reductions.append(cost_red)
                 self.ep_ops.append(info.get("final_ops", 0))
-                self.ep_ops_reductions.append(info.get("ops_reduction", 0.0) * 100.0)
+                self.ep_ops_reductions.append(ops_red)
                 self.ep_keys.append(info.get("final_keys", 0))
-                self.ep_keys_reductions.append(info.get("keys_reduction", 0.0) * 100.0)
-                self.ep_constraints.append(info.get("final_constraint", 0.0))
+                self.ep_keys_reductions.append(keys_red)
+                self.ep_constraints.append(c_val)
                 self.ep_violations.append(info.get("violation", 0.0))
-                self.ep_compliances.append(1.0 if info.get("is_compliant", True) else 0.0)
+                self.ep_compliances.append(is_comp)
+
+                self.recent_cost_reds.append(cost_red)
+                self.recent_ops_reds.append(ops_red)
+                self.recent_keys_reds.append(keys_red)
+                self.recent_constraints.append(c_val)
+                self.recent_compliances.append(is_comp)
+
+        # Real-time Step Progress update whenever accessed in terminal / log file
+        if (self.num_timesteps - self.last_progress_step) >= self.progress_freq:
+            now = time.time()
+            elapsed = now - self.start_time
+            step_delta = self.num_timesteps - self.last_step_count
+            time_delta = now - self.last_step_time
+            inst_fps = (step_delta / time_delta) if time_delta > 0 else 0.0
+            avg_fps = (self.num_timesteps / elapsed) if elapsed > 0 else 0.0
+
+            pct = (self.num_timesteps / max(self.total_timesteps, 1)) * 100.0
+            eta_sec = ((self.total_timesteps - self.num_timesteps) / avg_fps) if avg_fps > 0 else 0.0
+
+            def _fmt_dur(sec):
+                sec = int(max(0, sec))
+                h = sec // 3600
+                m = (sec % 3600) // 60
+                s = sec % 60
+                return f"{h:02d}:{m:02d}:{s:02d}"
+
+            mean_red = float(np.mean(self.recent_cost_reds)) if self.recent_cost_reds else 0.0
+            mean_comp = float(np.mean(self.recent_compliances) * 100.0) if self.recent_compliances else 100.0
+            lam = float(getattr(self.pid_wrapper, "lambda_penalty", 0.0)) if self.pid_wrapper else 0.0
+
+            if self.verbose > 0:
+                print(
+                    f"[Step Progress] {self.num_timesteps:7,d} / {self.total_timesteps:,d} ({pct:5.2f}%) | "
+                    f"Elapsed: {_fmt_dur(elapsed)} | ETA: {_fmt_dur(eta_sec)} | "
+                    f"FPS: {inst_fps:5.1f} (avg: {avg_fps:5.1f}) | "
+                    f"Cost Red: {mean_red:+5.1f}% | Compl: {mean_comp:5.1f}% | λ: {lam:.4f}",
+                    flush=True
+                )
+            self.last_progress_step = self.num_timesteps
+            self.last_step_count = self.num_timesteps
+            self.last_step_time = now
+
         return True
 
     def _on_rollout_end(self) -> None:
+        now = time.time()
+        elapsed = now - (self.start_time or now)
+        avg_fps = (self.num_timesteps / elapsed) if elapsed > 0 else 0.0
+        pct = (self.num_timesteps / max(self.total_timesteps, 1)) * 100.0
+
+        def _fmt_dur(sec):
+            sec = int(max(0, sec))
+            return f"{sec//3600:02d}:{(sec%3600)//60:02d}:{sec%60:02d}"
+
+        lam = float(getattr(self.pid_wrapper, "lambda_penalty", 0.0)) if self.pid_wrapper else 0.0
+
         if self.ep_costs:
+            m_cost_red = float(np.mean(self.ep_cost_reductions))
+            m_exec_red = float(np.mean(self.ep_ops_reductions))
+            m_keys_red = float(np.mean(self.ep_keys_reductions))
+            m_constraint = float(np.mean(self.ep_constraints))
+            m_compl = float(np.mean(self.ep_compliances)) * 100.0
+
+            if self.verbose > 0:
+                print(
+                    f"\n--- [Rollout Complete @ Step {self.num_timesteps:,} / {self.total_timesteps:,} ({pct:.2f}%)] "
+                    f"Elapsed: {_fmt_dur(elapsed)} | FPS: {avg_fps:.1f} | λ: {lam:.4f} ---\n"
+                    f"    Cost Red: {m_cost_red:+.1f}% (Exec: {m_exec_red:+.1f}%, Keys: {m_keys_red:+.1f}%) | "
+                    f"Constraint Mean: {m_constraint:.1f} | Safe Compliance: {m_compl:.1f}%\n",
+                    flush=True
+                )
+
             self.logger.record("unified/cost_final_mean", float(np.mean(self.ep_costs)))
-            self.logger.record("unified/cost_reduction_pct_mean", float(np.mean(self.ep_cost_reductions)))
+            self.logger.record("unified/cost_reduction_pct_mean", m_cost_red)
             self.logger.record("unified/exec_cost_final_mean", float(np.mean(self.ep_ops)))
-            self.logger.record("unified/exec_reduction_pct_mean", float(np.mean(self.ep_ops_reductions)))
+            self.logger.record("unified/exec_reduction_pct_mean", m_exec_red)
             self.logger.record("unified/keys_cost_final_mean", float(np.mean(self.ep_keys)))
-            self.logger.record("unified/keys_reduction_pct_mean", float(np.mean(self.ep_keys_reductions)))
-            self.logger.record("unified/constraint_final_mean", float(np.mean(self.ep_constraints)))
+            self.logger.record("unified/keys_reduction_pct_mean", m_keys_red)
+            self.logger.record("unified/constraint_final_mean", m_constraint)
             self.logger.record("unified/violation_mean", float(np.mean(self.ep_violations)))
-            self.logger.record("unified/compliance_rate", float(np.mean(self.ep_compliances)))
+            self.logger.record("unified/compliance_rate", m_compl / 100.0)
             self.ep_costs.clear()
             self.ep_cost_reductions.clear()
             self.ep_ops.clear()
@@ -430,4 +527,4 @@ class UnifiedMetricsCallback(BaseCallback):
             self.ep_compliances.clear()
 
         if self.pid_wrapper is not None:
-            self.logger.record("unified/lagrangian_lambda", float(getattr(self.pid_wrapper, "lambda_penalty", 0.0)))
+            self.logger.record("unified/lagrangian_lambda", lam)
