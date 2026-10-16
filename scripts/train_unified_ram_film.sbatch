@@ -4,7 +4,7 @@
 #SBATCH --mem 64GB
 #SBATCH -N 1
 #SBATCH -n 1
-#SBATCH -c 8
+#SBATCH -c 16
 #SBATCH -t 7-00:00:00
 
 # Email notifications on start, completion, or failure
