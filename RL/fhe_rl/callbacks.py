@@ -48,58 +48,174 @@ class ParetoEvalCallback(BaseCallback):
     def _on_step(self) -> bool:
         if self.n_calls % self.eval_freq == 0:
             if self.verbose > 0:
-                print(f"\nStep {self.num_timesteps}: Starting Pareto Evaluation ({len(self.pref_list)} points)")
-            
+                print(f"\n{BLUE}{'='*95}{RESET}")
+                print(f"{BOLD}Step {self.num_timesteps:,}: Starting Pareto & Safety Evaluation ({len(self.pref_list)} front points, {self.n_eval_episodes} benchmarks each){RESET}")
+                print(f"{BLUE}{'='*95}{RESET}")
+
+            GREEN = "\033[92m"
+            RED = "\033[91m"
+            YELLOW = "\033[93m"
+            CYAN = "\033[96m"
+            BOLD = "\033[1m"
+            RESET = "\033[0m"
+
             all_means = []
             all_lengths = []
-            
-            for w in self.pref_list:
-                # Force eval env to this specific goal
+            all_cost_reds = []
+            all_exec_reds = []
+            all_keys_reds = []
+            all_compliances = []
+            all_violations = []
+            all_margins = []
+
+            point_summaries = []
+
+            for p_idx, w in enumerate(self.pref_list):
+                # Lock eval env to this specific preference vector
                 self.eval_env.env_method("set_preference_vector", w)
-                
-                # Run evaluation
-                episode_rewards, episode_lengths = evaluate_policy(
-                    self.model, 
-                    self.eval_env, 
-                    n_eval_episodes=self.n_eval_episodes, 
-                    deterministic=self.deterministic,
-                    return_episode_rewards=True 
-                )
-                
-                mean_r = np.mean(episode_rewards)
+
+                pt_rewards = []
+                pt_lengths = []
+                pt_cost_reds = []
+                pt_exec_reds = []
+                pt_keys_reds = []
+                pt_compliances = []
+                pt_violations = []
+                pt_margins = []
+                pt_constraints = []
+                pt_budgets = []
+                metric_name = "Peak RAM"
+                metric_unit = "MB"
+
+                for _ in range(self.n_eval_episodes):
+                    obs = self.eval_env.reset()
+                    done = False
+                    ep_rew = 0.0
+                    ep_len = 0
+                    last_info = {}
+
+                    while not done:
+                        action, _ = self.model.predict(obs, deterministic=self.deterministic)
+                        obs, reward, dones, infos = self.eval_env.step(action)
+                        ep_rew += float(reward[0])
+                        ep_len += 1
+                        done = bool(dones[0])
+                        last_info = infos[0]
+
+                    pt_rewards.append(ep_rew)
+                    pt_lengths.append(ep_len)
+                    pt_cost_reds.append(last_info.get("cost_reduction", 0.0) * 100.0)
+                    pt_exec_reds.append(last_info.get("ops_reduction", 0.0) * 100.0)
+                    pt_keys_reds.append(last_info.get("keys_reduction", 0.0) * 100.0)
+                    is_safe = last_info.get("is_compliant", True)
+                    pt_compliances.append(1.0 if is_safe else 0.0)
+                    pt_violations.append(last_info.get("violation", 0.0))
+                    pt_margins.append(last_info.get("margin", 0.0))
+                    pt_constraints.append(last_info.get("final_constraint", 0.0))
+                    pt_budgets.append(last_info.get("budget", 0))
+                    metric_name = last_info.get("constraint_name", metric_name)
+                    metric_unit = last_info.get("constraint_unit", metric_unit)
+
+                mean_r = float(np.mean(pt_rewards))
+                mean_l = float(np.mean(pt_lengths))
+                mean_cost_red = float(np.mean(pt_cost_reds))
+                mean_exec_red = float(np.mean(pt_exec_reds))
+                mean_keys_red = float(np.mean(pt_keys_reds))
+                safe_rate = float(np.mean(pt_compliances)) * 100.0
+                mean_viol = float(np.mean(pt_violations))
+                mean_cons = float(np.mean(pt_constraints))
+                mean_bgt = float(np.mean(pt_budgets))
+
                 all_means.append(mean_r)
-                all_lengths.append(np.mean(episode_lengths))
+                all_lengths.append(mean_l)
+                all_cost_reds.append(mean_cost_red)
+                all_exec_reds.append(mean_exec_red)
+                all_keys_reds.append(mean_keys_red)
+                all_compliances.extend(pt_compliances)
+                all_violations.extend(pt_violations)
+                all_margins.extend(pt_margins)
 
-            # 1. Calculate the Global Score
-            current_mean_reward = np.mean(all_means)
-            current_mean_length = np.mean(all_lengths)
+                # Log per-point metrics to TensorBoard
+                self.logger.record(f"eval/reward_w_{w[1]:.2f}", mean_r)
+                self.logger.record(f"eval/safe_rate_w_{w[1]:.2f}", safe_rate)
+                self.logger.record(f"eval/cost_red_pct_w_{w[1]:.2f}", mean_cost_red)
+                self.logger.record(f"eval/exec_red_pct_w_{w[1]:.2f}", mean_exec_red)
+                self.logger.record(f"eval/keys_red_pct_w_{w[1]:.2f}", mean_keys_red)
 
-            # 2. Log to Tensorboard/Logger (standard EvalCallback style)
-            self.logger.record("eval/pareto_avg_reward", current_mean_reward)
-            self.logger.record("eval/pareto_avg_ep_length", current_mean_length)
-            
-            # Optional: Log specific weight performance for deeper insight
-            for i, w in enumerate(self.pref_list):
-                self.logger.record(f"eval/reward_w_{w[1]}", all_means[i])
-            
+                point_summaries.append({
+                    "p_idx": p_idx + 1,
+                    "w": w,
+                    "mean_r": mean_r,
+                    "cost_red": mean_cost_red,
+                    "exec_red": mean_exec_red,
+                    "keys_red": mean_keys_red,
+                    "constraint": mean_cons,
+                    "budget": mean_bgt,
+                    "safe_rate": safe_rate,
+                    "violations": int(len(pt_compliances) - sum(pt_compliances)),
+                    "metric_name": metric_name,
+                    "metric_unit": metric_unit,
+                })
+
             self.eval_env.env_method("unlock_preferences")
 
-            if self.verbose > 0:
-                print(f"Eval num_timesteps={self.num_timesteps}, "
-                      f"episode_reward={current_mean_reward:.2f} +/- {np.std(all_means):.2f}")
-                print(f"Episode length: {current_mean_length:.2f} +/- {np.std(all_lengths):.2f}")
+            # Global Front Scores
+            current_mean_reward = float(np.mean(all_means))
+            current_mean_length = float(np.mean(all_lengths))
+            current_safe_rate = float(np.mean(all_compliances)) * 100.0
+            current_mean_cost_red = float(np.mean(all_cost_reds))
+            current_mean_exec_red = float(np.mean(all_exec_reds))
+            current_mean_keys_red = float(np.mean(all_keys_reds))
+            current_mean_violation = float(np.mean(all_violations))
+            current_mean_margin = float(np.mean(all_margins))
+            total_violations = int(len(all_compliances) - sum(all_compliances))
 
-            # 3. Check if this is the "Best" model found so far
+            # Log to TensorBoard
+            self.logger.record("eval/pareto_avg_reward", current_mean_reward)
+            self.logger.record("eval/pareto_avg_ep_length", current_mean_length)
+            self.logger.record("eval/pareto_safe_compliance_rate", current_safe_rate)
+            self.logger.record("eval/pareto_avg_cost_red_pct", current_mean_cost_red)
+            self.logger.record("eval/pareto_avg_exec_red_pct", current_mean_exec_red)
+            self.logger.record("eval/pareto_avg_keys_red_pct", current_mean_keys_red)
+            self.logger.record("eval/pareto_avg_violation", current_mean_violation)
+            self.logger.record("eval/pareto_avg_margin", current_mean_margin)
+
+            # Print Detailed Evaluation Table
+            if self.verbose > 0:
+                print(f"{BOLD}{'Pt':<4} | {'Preference w':<24} | {'Total Red%':<11} | {'Exec Red%':<11} | {'Keys Red%':<11} | {'Avg ' + metric_name:<16} | {'Safety Status'}{RESET}")
+                print(f"{'-'*95}")
+                for s in point_summaries:
+                    safe_color = GREEN if s["safe_rate"] >= 100.0 else (YELLOW if s["safe_rate"] >= 80.0 else RED)
+                    safe_str = f"{safe_color}{s['safe_rate']:>5.1f}% SAFE ({s['violations']} viol){RESET}"
+                    print(
+                        f"#{s['p_idx']:<3} | "
+                        f"[ops={s['w'][0]:.2f}, keys={s['w'][1]:.2f}] | "
+                        f"{s['cost_red']:>+9.1f}% | "
+                        f"{s['exec_red']:>+9.1f}% | "
+                        f"{s['keys_red']:>+9.1f}% | "
+                        f"{s['constraint']:>6.1f} / {s['budget']:<4.0f} {s['metric_unit']} | "
+                        f"{safe_str}"
+                    )
+                print(f"{'-'*95}")
+                overall_color = GREEN if current_safe_rate >= 100.0 else (YELLOW if current_safe_rate >= 80.0 else RED)
+                print(f"{BOLD}Front Summary (Step {self.num_timesteps:,}):{RESET}")
+                print(f"  • {BOLD}Mean Pareto Reward{RESET}     : {CYAN}{current_mean_reward:.4f}{RESET} +/- {np.std(all_means):.4f}")
+                print(f"  • {BOLD}Safe Compliance Rate{RESET}   : {overall_color}{current_safe_rate:.1f}% SAFE{RESET} ({total_violations} total violations / {len(all_compliances)} evaluations)")
+                print(f"  • {BOLD}Avg Total Cost Red% {RESET}   : {GREEN if current_mean_cost_red > 0 else RED}{current_mean_cost_red:+.1f}%{RESET}")
+                print(f"  • {BOLD}Avg Exec Cost Red%  {RESET}   : {GREEN if current_mean_exec_red > 0 else RED}{current_mean_exec_red:+.1f}%{RESET} (Ops)")
+                print(f"  • {BOLD}Avg Keys Cost Red%  {RESET}   : {GREEN if current_mean_keys_red > 0 else RED}{current_mean_keys_red:+.1f}%{RESET} (Keys)")
+                print(f"  • {BOLD}Avg Safe Headroom   {RESET}   : {CYAN}{current_mean_margin:+.1f} {metric_unit}{RESET}")
+                print(f"  • {BOLD}Avg Episode Length  {RESET}   : {current_mean_length:.1f} steps")
+
+            # Model Checkpointing for Best Score
             if current_mean_reward > self.best_mean_reward:
                 if self.verbose > 0:
-                    print("New best mean reward!")
-                
+                    print(f"  ★ {GREEN}New Best Pareto Frontier Score: {current_mean_reward:.4f}! Saving checkpoint...{RESET}")
                 if self.best_model_save_path is not None:
                     self.model.save(os.path.join(self.best_model_save_path, "best_model"))
-                
                 self.best_mean_reward = current_mean_reward
 
-            # Trigger potential logging for SB3 monitoring
+            print(f"{BLUE}{'='*95}{RESET}\n")
             self.logger.dump(step=self.num_timesteps)
 
         return True
