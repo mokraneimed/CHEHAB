@@ -168,6 +168,9 @@ class fheEnvMO(gym.Env):
 
         print(f"\n{BLUE}{'='*40} EPISODE START {'='*40}{RESET}")
         print(f"{BOLD}{MAGENTA}Optimization Mode{RESET}  : {CYAN}{mode_name}{RESET}")
+        if self.budget_options:
+            print(f"{BOLD}{MAGENTA}RAM Budget       {RESET}: {CYAN}{self.budget} MB{RESET}")
+            print(f"{BOLD}{MAGENTA}Initial Peak RAM {RESET}: {YELLOW}{self.initial_mem:.1f} MB{RESET}")
 
         self.embeded_expression = self._embed_expression(self.expression)
         return self._get_obs(), {}
@@ -204,6 +207,10 @@ class fheEnvMO(gym.Env):
         print(
             f"{BOLD}{MAGENTA}Old keys cost      {RESET}: {RED}{self.curr_keys}{RESET}"
         )
+        if self.budget_options:
+            print(
+                f"{BOLD}{MAGENTA}Old peak RAM       {RESET}: {RED}{self.curr_mem:.1f} MB{RESET}"
+            )
 
         if rule_name == "END":
             terminated = True
@@ -242,6 +249,11 @@ class fheEnvMO(gym.Env):
         print(
             f"{BOLD}{MAGENTA}New keys cost      {RESET}: {RED}{self.curr_keys}{RESET}"
         )
+        if self.budget_options:
+            mem_color = GREEN if self.curr_mem <= self.budget else RED
+            print(
+                f"{BOLD}{MAGENTA}New peak RAM       {RESET}: {mem_color}{self.curr_mem:.1f} MB{RESET} (Budget: {self.budget} MB)"
+            )
         print(f"{BOLD}{MAGENTA}Reward        {RESET}: {reward_color}{reward}{RESET}")
         print(f"{BOLD}{MAGENTA}Rule name     {RESET}: {CYAN}{rule_name}{RESET}")
         print(f"{BOLD}{MAGENTA}At position   {RESET}: {BLUE}{pos_idx}{RESET}")
@@ -279,6 +291,17 @@ class fheEnvMO(gym.Env):
             print(
                 f"{BOLD}{MAGENTA}Final keys cost   {RESET}: {GREEN}{self.curr_keys}{RESET}"
             )
+            if self.budget_options:
+                mem_color = GREEN if self.curr_mem <= self.budget else RED
+                print(
+                    f"{BOLD}{MAGENTA}Initial peak RAM  {RESET}: {YELLOW}{self.initial_mem:.1f} MB{RESET}"
+                )
+                print(
+                    f"{BOLD}{MAGENTA}Final peak RAM    {RESET}: {mem_color}{self.curr_mem:.1f} MB{RESET}"
+                )
+                print(
+                    f"{BOLD}{MAGENTA}RAM Budget        {RESET}: {CYAN}{self.budget} MB{RESET}"
+                )
         obs = self._get_obs()
         out_info = {"expression": self.expression}
         if self.budget_options:
