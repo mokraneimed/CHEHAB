@@ -277,21 +277,45 @@ class fheEnvUnified(gym.Env):
             reward = self.calculate_final_reward()
             self.curr_constraint = self._estimate(self.expression)
         else:
-            parsed = parse_sexpr(self.expression)
-            rule_obj = self.rules[rule_name]
-            matches = rule_obj.find_matching_subexpressions(parsed)
+            try:
+                parsed = parse_sexpr(self.expression)
+                rule_obj = self.rules[rule_name]
+                matches = rule_obj.find_matching_subexpressions(parsed)
+            except Exception as e:
+                # Never kill a SubprocVecEnv worker on a bad expression/rule:
+                # fall back to a safe no-op terminal transition.
+                if self.verbose:
+                    print(f"[env] step fallback (parse/match failed for {rule_name}): {type(e).__name__}: {e}")
+                terminated = True
+                reward = self.calculate_final_reward()
+                obs = self._get_obs(self.curr_constraint)
+                return obs, reward, terminated, True, self._step_info(reward, terminated, True)
             if not matches:
-                raise IndexError(
-                    f"rule {rule_name} has no matches at pos {pos_idx}; "
-                    "action mask should have excluded it"
-                )
-            k, _ = matches[min(pos_idx, len(matches) - 1)]
-            new_expr_tree = rule_obj.apply_rule(parsed, path=k)
-            temp = expr_to_str(new_expr_tree)
+                # Mask should have excluded this; treat as invalid action with a
+                # small penalty instead of raising (which would stall the worker).
+                if self.verbose:
+                    print(f"[env] invalid action: rule {rule_name} has no matches at pos {pos_idx}; penalizing")
+                reward = -1.0
+                obs = self._get_obs(self.curr_constraint)
+                return obs, reward, False, False, self._step_info(reward, False, False)
+            try:
+                k, _ = matches[min(pos_idx, len(matches) - 1)]
+                new_expr_tree = rule_obj.apply_rule(parsed, path=k)
+                temp = expr_to_str(new_expr_tree)
+            except Exception as e:
+                if self.verbose:
+                    print(f"[env] step fallback (apply_rule failed for {rule_name}): {type(e).__name__}: {e}")
+                terminated = True
+                reward = self.calculate_final_reward()
+                obs = self._get_obs(self.curr_constraint)
+                return obs, reward, terminated, True, self._step_info(reward, terminated, True)
             self.expression = temp
 
-            new_cost = self.get_cost(self.expression)
-            new_ops, new_keys = self.get_split_costs(self.expression)
+            try:
+                new_cost = self.get_cost(self.expression)
+                new_ops, new_keys = self.get_split_costs(self.expression)
+            except Exception:
+                new_cost, new_ops, new_keys = self.current_cost, self.curr_ops, self.curr_keys
             self.curr_constraint = self._estimate(self.expression)
 
             reward = self.calculate_intermediate_reward(new_ops, new_keys)
@@ -358,32 +382,7 @@ class fheEnvUnified(gym.Env):
         keys_red = ((self.initial_keys - self.curr_keys) / max(self.initial_keys, 1e-6)) * 100.0
         is_compliant = bool(self.curr_constraint <= self.budget)
 
-        info = {
-            "expression": self.expression,
-            "budget": self.budget,
-            "constraint_value": self.curr_constraint,
-            "noise": self.curr_constraint,
-            "cost": self.current_cost,
-            "initial_cost": self.initial_cost,
-            "cost_reduction": cost_red / 100.0,
-            "c_exec": self.curr_ops,
-            "initial_ops": self.initial_ops,
-            "ops_reduction": ops_red / 100.0,
-            "c_keys": self.curr_keys,
-            "initial_keys": self.initial_keys,
-            "keys_reduction": keys_red / 100.0,
-            "initial_constraint": self.initial_constraint,
-            "constraint_metric": self.constraint_metric,
-            "constraint_name": self.metric_name,
-            "constraint_unit": self.metric_unit,
-            "violation": max(0.0, self.curr_constraint - self.budget),
-            "margin": self.budget - self.curr_constraint,
-            "is_compliant": is_compliant,
-            "preference_vector": self.current_w,
-            "r_exec": float(self._last_r_vec[0]),
-            "r_keys": float(self._last_r_vec[1]),
-            "rotation_keys": rotation_steps(self.expression),
-        }
+        info = self._step_info(reward, terminated, truncated)
 
         if terminated or truncated:
             info["episode"] = {"r": reward, "l": self.steps, "t": None}
@@ -405,6 +404,69 @@ class fheEnvUnified(gym.Env):
 
         obs = self._get_obs(self.curr_constraint)
         return obs, reward, terminated, truncated, info
+
+    def _step_info(self, reward, terminated=False, truncated=False):
+        """Build the step info dict; never raises (safe for early fallbacks)."""
+        try:
+            cost_red = ((self.initial_cost - self.current_cost) / max(self.initial_cost, 1e-6)) * 100.0
+        except Exception:
+            cost_red = 0.0
+        try:
+            ops_red = ((self.initial_ops - self.curr_ops) / max(self.initial_ops, 1e-6)) * 100.0
+        except Exception:
+            ops_red = 0.0
+        try:
+            keys_red = ((self.initial_keys - self.curr_keys) / max(self.initial_keys, 1e-6)) * 100.0
+        except Exception:
+            keys_red = 0.0
+        try:
+            is_compliant = bool(self.curr_constraint <= self.budget)
+            violation = max(0.0, self.curr_constraint - self.budget)
+            margin = self.budget - self.curr_constraint
+        except Exception:
+            is_compliant, violation, margin = True, 0.0, 0.0
+        try:
+            rot_keys = rotation_steps(self.expression)
+        except Exception:
+            rot_keys = -1
+        try:
+            r_exec, r_keys = float(self._last_r_vec[0]), float(self._last_r_vec[1])
+        except Exception:
+            r_exec, r_keys = 0.0, 0.0
+        info = {
+            "expression": getattr(self, "expression", ""),
+            "budget": getattr(self, "budget", None),
+            "constraint_value": getattr(self, "curr_constraint", 0.0),
+            "noise": getattr(self, "curr_constraint", 0.0),
+            "cost": getattr(self, "current_cost", 0),
+            "initial_cost": getattr(self, "initial_cost", 0),
+            "cost_reduction": cost_red / 100.0,
+            "c_exec": getattr(self, "curr_ops", 0),
+            "initial_ops": getattr(self, "initial_ops", 0),
+            "ops_reduction": ops_red / 100.0,
+            "c_keys": getattr(self, "curr_keys", 0),
+            "initial_keys": getattr(self, "initial_keys", 0),
+            "keys_reduction": keys_red / 100.0,
+            "initial_constraint": getattr(self, "initial_constraint", 0.0),
+            "constraint_metric": getattr(self, "constraint_metric", "mem"),
+            "constraint_name": getattr(self, "metric_name", "Peak RAM"),
+            "constraint_unit": getattr(self, "metric_unit", "MB"),
+            "violation": violation,
+            "margin": margin,
+            "is_compliant": is_compliant,
+            "preference_vector": getattr(self, "current_w", np.array([1.0, 0.0], dtype=np.float32)),
+            "r_exec": r_exec,
+            "r_keys": r_keys,
+            "rotation_keys": rot_keys,
+        }
+        if terminated or truncated:
+            info["episode"] = {"r": reward, "l": getattr(self, "steps", 0), "t": None}
+        # Aliases expected by UnifiedMetricsCallback.
+        info.setdefault("final_cost", info["cost"])
+        info.setdefault("final_ops", info["c_exec"])
+        info.setdefault("final_keys", info["c_keys"])
+        info.setdefault("final_constraint", info["constraint_value"])
+        return info
 
     def _reward_vector(self, delta_ops_old, delta_ops_new, delta_keys_old, delta_keys_new) -> np.ndarray:
         r_ops = (delta_ops_old - delta_ops_new) / delta_ops_old if delta_ops_old != 0 else 0.0
@@ -442,16 +504,22 @@ class fheEnvUnified(gym.Env):
         return calculate_cost(parse_sexpr(expr))
 
     def _embed_expression(self, expr: str) -> np.ndarray:
-        if self.embeddings_model is None:
-            return np.zeros((self.embedding_dim,), dtype=np.float32)
-        if hasattr(self.embeddings_model, "get_embedding"):
-            return self.embeddings_model.get_embedding(expr)
-        expr_tree = parse_sexpr(expr)
-        with torch.no_grad():
-            emb = get_expression_cls_embedding(expr_tree, self.embeddings_model)
-        if emb is None:
-            return np.zeros((self.embedding_dim,), dtype=np.float32)
-        return emb.squeeze(0).cpu().numpy().astype(np.float32)
+        fallback = np.zeros((self.embedding_dim,), dtype=np.float32)
+        try:
+            if self.embeddings_model is None:
+                return fallback
+            if hasattr(self.embeddings_model, "get_embedding"):
+                emb = self.embeddings_model.get_embedding(expr)
+                arr = np.asarray(emb, dtype=np.float32).reshape(-1)
+                return arr[: self.embedding_dim] if arr.size >= self.embedding_dim else np.pad(arr, (0, self.embedding_dim - arr.size))
+            expr_tree = parse_sexpr(expr)
+            with torch.no_grad():
+                emb = get_expression_cls_embedding(expr_tree, self.embeddings_model)
+            if emb is None:
+                return fallback
+            return emb.squeeze(0).cpu().numpy().astype(np.float32)
+        except Exception:
+            return fallback
 
     def set_noise_budget(self, budget: int | None):
         if budget is None:
@@ -470,19 +538,31 @@ class fheEnvUnified(gym.Env):
         self.active_budgets = list(budgets)
 
     def get_action_mask(self) -> np.ndarray:
-        mask = np.zeros(len(self.rules.keys()) * self.max_positions, dtype=np.float32)
-        parsed = parse_sexpr(self.expression)
-        use_masking = (
-            self.constraint_method == "noise_masking"
-            and self.budget is not None
-            and self.budget < UNCONSTRAINED_BUDGET_THRESHOLD
-        )
+        n_actions = len(self.rules.keys()) * self.max_positions
+        mask = np.zeros(n_actions, dtype=np.float32)
+        try:
+            parsed = parse_sexpr(self.expression)
+        except Exception:
+            # Unparseable expression: allow only END so the episode can close.
+            mask[0] = 1.0
+            return mask
+        try:
+            use_masking = (
+                self.constraint_method == "noise_masking"
+                and self.budget is not None
+                and self.budget < UNCONSTRAINED_BUDGET_THRESHOLD
+            )
+        except Exception:
+            use_masking = False
         for rule_idx, rule_name in enumerate(self.rules.keys()):
             if rule_name == "END":
                 mask[rule_idx * self.max_positions] = 1.0
                 continue
-            rule_obj = self.rules[rule_name]
-            matches = rule_obj.find_matching_subexpressions(parsed)
+            try:
+                rule_obj = self.rules[rule_name]
+                matches = rule_obj.find_matching_subexpressions(parsed)
+            except Exception:
+                continue
             valid_positions = min(len(matches), self.max_positions)
             if valid_positions > 0:
                 start = rule_idx * self.max_positions
@@ -498,4 +578,6 @@ class fheEnvUnified(gym.Env):
                             pass
                 else:
                     mask[start:start + valid_positions] = 1.0
+        if not np.any(mask):
+            mask[0] = 1.0  # never return an all-zero mask (would stall sampling)
         return mask

@@ -15,6 +15,8 @@
 #SBATCH -o logs/output.unified_ram_film.%j.txt
 #SBATCH -e logs/error.unified_ram_film.%j.txt
 #SBATCH -J unified-ram-film
+# Graceful pre-timeout / pre-cancel checkpoint: SIGTERM 5 min before kill
+#SBATCH --signal=B:TERM@300
 
 set +u
 # Activate cluster conda environment
@@ -93,4 +95,4 @@ stdbuf -oL -eL python -u -m fhe_rl \
     --algo "$ALGO" \
     --budget_encoding "$ENCODING" \
     --policy_variant "$VARIANT" \
-    2>&1 | tee -a "$PROJ_ROOT/logs/train_unified_ram_film_${SLURM_JOB_ID:-local}.log"
+    > "$PROJ_ROOT/logs/train_unified_ram_film_${SLURM_JOB_ID:-local}.log" 2>&1

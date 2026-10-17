@@ -24,25 +24,77 @@ from collections import deque
 import re
 
 
+_LITERAL_RE = re.compile(r"^[+-]?\d+$")
+
+
 def _tokens(s):
+    if not isinstance(s, str):
+        return []
     return s.replace("(", "( ").replace(")", " )").split()
 
 
 def _is_literal(t):
-    return not any(c.isalpha() for c in t)
+    """Strict literal check: plain integers only (no parens, no vars).
+
+    The old implementation (no alphabetic chars) misclassified folded
+    expressions like "( - 0 )" as literals, which then crashed int().
+    """
+    return isinstance(t, str) and bool(_LITERAL_RE.match(t.strip()))
+
+
+def _safe_eval(s):
+    """Recursively evaluate a folded lane fragment to int, or None.
+
+    Handles nested unary/binary +,-,* over integer literals, e.g.
+    "( - 0 )" -> 0, "( - ( - 0 ) )" -> 0, "( + ( - 0 ) 1 )" -> 1.
+    Returns None for anything containing variables/operators outside +,-,*.
+    """
+    if isinstance(s, int):
+        return s
+    if not isinstance(s, str):
+        return None
+    s = s.strip()
+    if _LITERAL_RE.match(s):
+        try:
+            return int(s)
+        except ValueError:
+            return None
+    if not (s.startswith("(") and s.endswith(")")):
+        return None
+    try:
+        items = _groups(_tokens(s)[1:-1])
+    except Exception:
+        return None
+    if not items:
+        return None
+    op = items[0]
+    args = items[1:]
+    if op == "-" and len(args) == 1:
+        v = _safe_eval(args[0])
+        return -v if v is not None else None
+    if op == "+" and len(args) == 1:
+        return _safe_eval(args[0])
+    if op in ("+", "-", "*") and len(args) == 2:
+        a, b = _safe_eval(args[0]), _safe_eval(args[1])
+        if a is None or b is None:
+            return None
+        if op == "+":
+            return a + b
+        if op == "-":
+            return a - b
+        return a * b
+    return None
 
 
 def _to_int(s):
     try:
-        return int(s)
+        return int(s) if isinstance(s, str) and _LITERAL_RE.match(s.strip()) else int(s)
     except (ValueError, TypeError):
-        if isinstance(s, str) and s.startswith("(") and s.endswith(")"):
-            inner = s[1:-1].strip().split()
-            if len(inner) == 2 and inner[0] == "-":
-                try:
-                    return -int(inner[1])
-                except ValueError:
-                    pass
+        pass
+    # Fall back to recursive evaluation for folded fragments like "( - 0 )".
+    try:
+        return _safe_eval(s)
+    except Exception:
         return None
 
 
@@ -110,14 +162,24 @@ def _fold(lane):
 def _groups(tokens):
     """split a token list into top-level items (atoms or balanced groups joined by single spaces)"""
     out, i = [], 0
-    while i < len(tokens):
+    if not tokens:
+        return out
+    n = len(tokens)
+    while i < n:
         if tokens[i] == "(":
             depth, j = 0, i
-            while True:
-                depth += 1 if tokens[j] == "(" else -1 if tokens[j] == ")" else 0
+            while j < n:
+                if tokens[j] == "(":
+                    depth += 1
+                elif tokens[j] == ")":
+                    depth -= 1
                 j += 1
                 if depth == 0:
                     break
+            if depth != 0:
+                # Unbalanced input: treat remainder as one atom, never hang/crash.
+                out.append(" ".join(tokens[i:]))
+                break
             out.append(" ".join(tokens[i:j]))
             i = j
         else:
@@ -127,8 +189,14 @@ def _groups(tokens):
 
 
 def _is_unary_minus(elem):
-    items = _groups(_tokens(elem)[2:-1])      # operands between "( -" and ")"
-    return len(items) == 1
+    try:
+        toks = _tokens(elem)
+        if len(toks) < 4 or toks[0] != "(" or toks[1] != "-" or toks[-1] != ")":
+            return False
+        items = _groups(toks[2:-1])      # operands between "( -" and ")"
+        return len(items) == 1
+    except Exception:
+        return False
 
 
 def _decompose(elems):
@@ -136,7 +204,13 @@ def _decompose(elems):
     for e in elems:
         if e == "0":
             ops1.append("0"); ops2.append("0"); continue
-        items = _groups(_tokens(e)[2:-1])
+        try:
+            toks = _tokens(e)
+            if len(toks) < 4 or toks[0] != "(" or toks[-1] != ")":
+                continue
+            items = _groups(toks[1:-1])
+        except Exception:
+            continue
         if len(items) >= 2:
             ops1.append(items[0]); ops2.append(items[1])
         elif len(items) == 1:
@@ -180,6 +254,9 @@ class _Packer:
             for e in comp:
                 if e == "0":
                     add.append("0"); sub.append("0"); mul.append("0"); neg.append("0"); continue
+                if not isinstance(e, str) or len(e) < 5 or not e.startswith("("):
+                    # Malformed lane: keep as opaque cipher input, never index-crash.
+                    return self._entry(key, "c")
                 ch = e[2]
                 z = ["0", "0", "0", "0"]
                 if ch == "+":
@@ -216,13 +293,19 @@ class _Packer:
 
 
 def _parse(tokens):
+    if not tokens:
+        return []
     def rec(i):
+        if i >= len(tokens):
+            raise ValueError("truncated token stream")
         if tokens[i] == "(":
             i += 1
             node = []
-            while tokens[i] != ")":
+            while i < len(tokens) and tokens[i] != ")":
                 ch, i = rec(i)
                 node.append(ch)
+            if i >= len(tokens):
+                raise ValueError("unbalanced parentheses")
             return node, i + 1
         return tokens[i], i + 1
     node, _ = rec(0)
@@ -238,7 +321,20 @@ _VEC_OPS = {"VecAdd": "+", "VecMinus": "-", "VecNeg": "-", "VecMul": "*", "<<": 
 
 
 def pack(expr):
-    """returns (ir_string, n_cipher_inputs, n_plain_inputs, n_ops)"""
+    """returns (ir_string, n_cipher_inputs, n_plain_inputs, n_ops)
+
+    Never raises: on malformed input returns the raw expression with zero
+    cipher/plain counts so the memory estimator falls back gracefully
+    instead of killing a SubprocVecEnv worker.
+    """
+    try:
+        return _pack_inner(expr)
+    except Exception:
+        raw = expr if isinstance(expr, str) else ""
+        return raw, 0, 0, 0
+
+
+def _pack_inner(expr):
     pk = _Packer()
 
     def proc(node):
@@ -260,6 +356,9 @@ def pack(expr):
 
 def pack_expr_str(expr):
     """expression in the estimator's dialect: cipher vectors -> Var, plaintext vectors -> constant 1"""
-    ir, _, _, _ = pack(expr)
-    ir = re.sub(r"\bp\d+\b", "1", ir)
-    return ir.replace("( ", "(").replace(" )", ")")
+    try:
+        ir, _, _, _ = pack(expr)
+        ir = re.sub(r"\bp\d+\b", "1", ir)
+        return ir.replace("( ", "(").replace(" )", ")")
+    except Exception:
+        return expr if isinstance(expr, str) else ""

@@ -1,5 +1,8 @@
 import os
 import random
+import re
+import signal
+import time
 import numpy as np
 import torch
 from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
@@ -90,15 +93,20 @@ def train_agent(
     checkpoint_dir = f"./checkpoints/{run_name}"
     os.makedirs(checkpoint_dir, exist_ok=True)
 
-    # Checkpoint resumption
+    # Checkpoint resumption (regex-based: robust to extra underscores/variants)
     checkpoint_path = None
     steps_done = 0
+    _CKPT_RE = re.compile(r"^rl_model_(\d+)_steps\.zip$")
     if os.path.exists(checkpoint_dir):
-        checkpoints = [f for f in os.listdir(checkpoint_dir) if f.startswith("rl_model_") and f.endswith("_steps.zip")]
-        if checkpoints:
-            latest = max(checkpoints, key=lambda x: int(x.split("_")[2]))
-            checkpoint_path = os.path.join(checkpoint_dir, latest)
-            steps_done = int(latest.split("_")[2])
+        candidates = []
+        for f in os.listdir(checkpoint_dir):
+            m = _CKPT_RE.match(f)
+            if m:
+                candidates.append((int(m.group(1)), f))
+        if candidates:
+            best_steps, best_file = max(candidates, key=lambda t: t[0])
+            checkpoint_path = os.path.join(checkpoint_dir, best_file)
+            steps_done = best_steps
             print(f"Found checkpoint: {checkpoint_path}")
             print(f"Resuming from step {steps_done}")
 
@@ -214,7 +222,7 @@ def train_agent(
             return res
 
     checkpoint_callback = PIDCheckpointCallback(
-        save_freq=5000,
+        save_freq=1000,
         save_path=checkpoint_dir,
         name_prefix="rl_model",
         save_replay_buffer=False,
@@ -222,6 +230,15 @@ def train_agent(
         verbose=1,
         pid_wrapper=pid_wrapper,
     )
+
+    # Heartbeat file: lets HPC babysitting detect a frozen worker without
+    # parsing multi-MB logs. Updated by the metrics callback below.
+    heartbeat_path = os.path.join(checkpoint_dir, "heartbeat.json")
+    try:
+        with open(heartbeat_path, "w") as _hb:
+            _hb.write('{"timesteps": %d, "time": %.1f, "run": "%s"}' % (steps_done, time.time(), run_name))
+    except Exception:
+        pass
 
     pareto_eval_cb = ParetoEvalCallback(
         val_env, 
@@ -243,6 +260,37 @@ def train_agent(
         print(f"Starting fresh training: {total_timesteps} total steps")
 
     unified_metrics_cb = UnifiedMetricsCallback(pid_wrapper=pid_wrapper, total_timesteps=remaining_steps, progress_freq=2000, verbose=1)
+
+    # Write heartbeat alongside every progress line (cheap, atomic).
+    _orig_progress_step = unified_metrics_cb._on_step
+    def _on_step_with_heartbeat():
+        ok = _orig_progress_step()
+        try:
+            with open(heartbeat_path, "w") as _hb:
+                _hb.write('{"timesteps": %d, "time": %.1f, "run": "%s"}' % (
+                    int(unified_metrics_cb.num_timesteps), time.time(), run_name))
+        except Exception:
+            pass
+        return ok
+    unified_metrics_cb._on_step = _on_step_with_heartbeat
+
+    # Graceful SIGTERM: SLURM sends TERM before KILL (see --signal in sbatch).
+    # Save an emergency checkpoint so scancel/timeout never loses everything.
+    _term_state = {"hit": False}
+    def _handle_term(signum, frame):
+        if _term_state["hit"]:
+            return
+        _term_state["hit"] = True
+        try:
+            emg = os.path.join(checkpoint_dir, "rl_model_emergency.zip")
+            model.save(emg)
+            print(f"\n[SIGTERM] emergency checkpoint saved to {emg}", flush=True)
+        except Exception as e:
+            print(f"\n[SIGTERM] emergency save failed: {e}", flush=True)
+    try:
+        signal.signal(signal.SIGTERM, _handle_term)
+    except Exception:
+        pass
 
     model.learn(
         total_timesteps=remaining_steps, 

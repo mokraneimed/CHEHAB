@@ -328,6 +328,73 @@ class TestUnifiedRL(unittest.TestCase):
         self.assertEqual(step_info["constraint_unit"], "MB")
 
 
+    def test_11_packing_never_raises(self):
+        """Hardening: packing constant folding must never raise on folded lanes."""
+        from fhe_rl.packing import (
+            pack, pack_expr_str, _to_int, _safe_eval, _is_literal,
+            _groups, _tokens, _is_unary_minus, _decompose, _fold,
+        )
+        # Strict literal semantics
+        self.assertTrue(_is_literal("0"))
+        self.assertTrue(_is_literal("-12"))
+        self.assertFalse(_is_literal("( - 0 )"))
+        self.assertFalse(_is_literal("v1_0"))
+        # Recursive int folding
+        self.assertEqual(_to_int("( - 0 )"), 0)
+        self.assertEqual(_to_int("( - ( - 0 ) )"), 0)
+        self.assertEqual(_safe_eval("( + ( - 0 ) 1 )"), 1)
+        self.assertEqual(_safe_eval("( * ( - 2 ) 3 )"), -6)
+        self.assertIsNone(_safe_eval("( + v1_0 1 )"))
+        # Helpers on malformed input: no raise, no hang
+        self.assertEqual(_groups([]), [])
+        self.assertEqual(_groups(["(", "+", "1"]), ["( + 1"])
+        self.assertFalse(_is_unary_minus("( - )"))
+        self.assertFalse(_is_unary_minus("0"))
+        self.assertEqual(_decompose(["0", "( - )"]), (["0"], ["0"]))
+        # Full pack on the frozen Step-44 style lane + garbage
+        tricky = "(Vec ( - 0 ) ( + v1_0 v2_0 ) ( * ( - 0 ) 1 ))"
+        ir, nc, npl, nops = pack(tricky)
+        self.assertIsInstance(ir, str)
+        self.assertTrue(pack_expr_str(tricky))
+        for bad in ["", "(Vec", "(Vec ( - )", "(Vec ( + v1_0 ))", "((", "not-an-expr", None, 123]:
+            ir, _, _, _ = pack(bad)
+            self.assertIsInstance(ir, str)
+            self.assertIsInstance(pack_expr_str(bad), str)
+            self.assertIsInstance(_fold("( - 0 )"), str)
+
+    def test_12_env_never_raises(self):
+        """Hardening: env step/mask must never raise, even on invalid actions."""
+        import random
+        env = fheEnvUnified(
+            self.rules_list,
+            self.test_expressions,
+            max_positions=16,
+            constraint_metric="mem",
+            budget_options=[1500, 2000, 2600, 1000000],
+            verbose=False,
+        )
+        obs, _ = env.reset(seed=0)
+        n_actions = len(self.rules_list) * 16
+        rng = random.Random(1234)
+        for _ in range(60):
+            a = rng.randrange(n_actions)  # deliberately includes invalid mask entries
+            obs, reward, term, trunc, info = env.step(a)
+            self.assertIn("cost", info)
+            self.assertIn("final_cost", info)
+            self.assertIsInstance(float(reward), float)
+            if term or trunc:
+                obs, _ = env.reset()
+            mask = env.get_action_mask()
+            self.assertEqual(mask.shape, (n_actions,))
+            self.assertGreater(float(mask.sum()), 0.0)
+        # Corrupted expression: mask falls back to END-only, step still returns
+        env.expression = "((("
+        mask = env.get_action_mask()
+        self.assertGreater(float(mask.sum()), 0.0)
+        obs, reward, term, trunc, info = env.step(0)
+        self.assertIn("cost", info)
+
+
 if __name__ == "__main__":
     unittest.main()
 
