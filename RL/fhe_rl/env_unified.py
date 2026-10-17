@@ -1,3 +1,6 @@
+import os
+import signal
+
 import numpy as np
 import gymnasium as gym
 from gymnasium import spaces
@@ -24,6 +27,45 @@ MAGENTA = "\033[35m"
 CYAN    = "\033[36m"
 
 UNCONSTRAINED_BUDGET_THRESHOLD = 100_000
+
+# ── Watchdog around RewriteRule.apply_rule ──────────────────────────────────
+# A de-rotate rule (or any pathological match) can grind for minutes inside
+# _apply_rule_everywhere -> deep validate_expression on huge expressions,
+# freezing the whole SubprocVecEnv (all 8 workers are synchronous). This
+# watchdog converts such a stall into a soft invalid-action instead.
+# FHE_APPLY_RULE_TIMEOUT_S: seconds (default 20; <=0 disables the watchdog).
+_APPLY_RULE_TIMEOUT_S = float(os.environ.get("FHE_APPLY_RULE_TIMEOUT_S", "20"))
+
+
+class _ApplyRuleTimeout(Exception):
+    """Raised by the SIGALRM watchdog when apply_rule exceeds its budget."""
+
+
+def _apply_rule_timeout_handler(signum, frame):
+    raise _ApplyRuleTimeout("apply_rule exceeded watchdog timeout")
+
+
+def _apply_rule_with_timeout(rule_obj, parsed, path, timeout_s):
+    """Run rule_obj.apply_rule(parsed, path=path) under a SIGALRM watchdog.
+
+    The alarm is always cancelled in finally. Falls back to a plain call when
+    SIGALRM is unavailable (Windows) or we are not on the main thread (signal
+    handlers can only be installed there). SubprocVecEnv workers each run the
+    env on their own process' main thread, so the watchdog is active on HPC.
+    """
+    if timeout_s <= 0 or not hasattr(signal, "SIGALRM"):
+        return rule_obj.apply_rule(parsed, path=path)
+    try:
+        old_handler = signal.signal(signal.SIGALRM, _apply_rule_timeout_handler)
+    except ValueError:
+        # Not main thread: cannot install handlers; run unprotected.
+        return rule_obj.apply_rule(parsed, path=path)
+    try:
+        signal.setitimer(signal.ITIMER_REAL, timeout_s)
+        return rule_obj.apply_rule(parsed, path=path)
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)      # always cancel the alarm
+        signal.signal(signal.SIGALRM, old_handler)   # always restore handler
 
 
 class fheEnvUnified(gym.Env):
@@ -300,8 +342,20 @@ class fheEnvUnified(gym.Env):
                 return obs, reward, False, False, self._step_info(reward, False, False)
             try:
                 k, _ = matches[min(pos_idx, len(matches) - 1)]
-                new_expr_tree = rule_obj.apply_rule(parsed, path=k)
+                new_expr_tree = _apply_rule_with_timeout(
+                    rule_obj, parsed, k, _APPLY_RULE_TIMEOUT_S)
                 temp = expr_to_str(new_expr_tree)
+            except _ApplyRuleTimeout:
+                # Watchdog fired: treat the action as invalid, do NOT terminate
+                # the episode (other rules remain usable next step).
+                print(
+                    f"[env] apply_rule timeout (>{_APPLY_RULE_TIMEOUT_S}s): "
+                    f"rule={rule_name} expr_size={len(self.expression)}",
+                    flush=True,
+                )
+                reward = -1.0
+                obs = self._get_obs(self.curr_constraint)
+                return obs, reward, False, False, self._step_info(reward, False, False)
             except Exception as e:
                 if self.verbose:
                     print(f"[env] step fallback (apply_rule failed for {rule_name}): {type(e).__name__}: {e}")
