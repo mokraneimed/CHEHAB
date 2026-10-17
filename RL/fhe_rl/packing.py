@@ -32,11 +32,27 @@ def _is_literal(t):
     return not any(c.isalpha() for c in t)
 
 
+def _to_int(s):
+    try:
+        return int(s)
+    except (ValueError, TypeError):
+        if isinstance(s, str) and s.startswith("(") and s.endswith(")"):
+            inner = s[1:-1].strip().split()
+            if len(inner) == 2 and inner[0] == "-":
+                try:
+                    return -int(inner[1])
+                except ValueError:
+                    pass
+        return None
+
+
 # ───────────── constant folding (port of constant_folding) ─────────────
 def _cf(q):
+    if not q:
+        return ""
     t = q[0]
     if t != "(":
-        return t
+        return q.popleft()
     q.popleft()
     op = q.popleft()
     potential = ""
@@ -54,29 +70,33 @@ def _cf(q):
     if q and q[0] == ")":
         q.popleft()
     if not potential:
+        val = _to_int(o1)
+        if op == "-" and val is not None:
+            return str(-val)
+        if op == "+" and val is not None:
+            return str(val)
         return f"( {op} {o1} )"
-    l1, l2 = _is_literal(o1), _is_literal(o2)
+
+    i1 = _to_int(o1)
+    i2 = _to_int(o2)
     gen = f"( {op} {o1} {o2} )"
-    if l1 and l2:
-        a, b = int(o1), int(o2)
-        r = a + b if op == "+" else a - b if op == "-" else a * b if op == "*" else 0
+    if i1 is not None and i2 is not None:
+        r = i1 + i2 if op == "+" else i1 - i2 if op == "-" else i1 * i2 if op == "*" else 0
         return str(r)
-    if l1:
-        a = int(o1)
-        if a == 0:
+    if i1 is not None:
+        if i1 == 0:
             return o2 if op == "+" else f"( - {o2} )" if op == "-" else "0" if op == "*" else gen
-        if a == 1:
+        if i1 == 1:
             return o2 if op == "*" else gen
-        if a == -1:
+        if i1 == -1:
             return f"( - {o2} )" if op == "*" else gen
         return gen
-    if l2:
-        b = int(o2)
-        if b == 0:
+    if i2 is not None:
+        if i2 == 0:
             return o1 if op == "+" else f"( - {o1} )" if op == "-" else "0" if op == "*" else gen
-        if b == 1:
+        if i2 == 1:
             return o1 if op == "*" else gen
-        if b == -1:
+        if i2 == -1:
             return f"( - {o1} )" if op == "*" else gen
         return gen
     return gen

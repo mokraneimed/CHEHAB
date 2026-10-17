@@ -121,7 +121,7 @@ def train_agent(
                 pref_list=pref_list,
                 lambda_env=lambda_env, lambda_kl=lambda_kl,
                 n_cycle=n_cycle, n_budget=n_budget, env_idx=rank,
-                verbose=(rank == 0 and not is_eval)
+                verbose=False
             )
             return Monitor(env)
         return _init
