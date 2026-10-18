@@ -29,7 +29,11 @@ SCRIPTS_DIR = REPO_ROOT / "scripts"
 RESULTS_DIR = REPO_ROOT / "results"
 RUNNER_SCRIPT = SCRIPTS_DIR / "run_all_benchmarks.py"
 
-DEFAULT_DNNS = ["conv2d", "full_dnn", "cryptonets", "mlp", "lola"]
+DEFAULT_DNNS = [
+    "conv2d", "full_dnn", "cryptonets", "mlp", "lola", "lenet",
+    "resnet20_relu", "resnet20_silu", "resnet34_relu", "resnet34_silu",
+    "resnet50_relu", "resnet50_silu", "alexnet",
+]
 
 OPTIMIZERS_CONFIG = [
     {

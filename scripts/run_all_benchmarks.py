@@ -30,7 +30,11 @@ class Benchmark:
         return BUILD_DIR / "benchmarks" / "dnn_tensor" / "he" / f"tensor_{self.name}_auto.go"
 
 
-BENCHMARKS = {name: Benchmark(name) for name in ("conv2d", "full_dnn", "cryptonets", "mlp", "lola", "alexnet")}
+BENCHMARKS = {name: Benchmark(name) for name in (
+    "conv2d", "full_dnn", "cryptonets", "mlp", "lola", "lenet",
+    "resnet20_relu", "resnet20_silu", "resnet34_relu", "resnet34_silu",
+    "resnet50_relu", "resnet50_silu", "alexnet"
+)}
 CSV_FIELDS = [
     "benchmark", "backend", "repetitions", "dsl_generation_ms", "encrypt_ms", "compute_ms",
     "decrypt_ms", "total_measured_ms", "rotation_keys", "bootstrap_count", "level_start",
@@ -42,7 +46,7 @@ CSV_FIELDS = [
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="CHEHAB encrypted DNN benchmark runner")
     parser.add_argument("--benchmarks", default=",".join(BENCHMARKS),
-                        help="comma-separated: conv2d,full_dnn,cryptonets,mlp,lola,alexnet")
+                        help="comma-separated benchmark names; see the default list")
     parser.add_argument("--repetitions", type=int, default=3,
                         help="encrypted inference repetitions per benchmark")
     parser.add_argument("--optimizer", choices=("trs", "original_rl", "morl", "constrained_rl", "none"),

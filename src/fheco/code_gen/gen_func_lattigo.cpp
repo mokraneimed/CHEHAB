@@ -419,7 +419,10 @@ void gen_op_terms_go(
       hoisted_inputs.insert(input_id);
   if (!hoisted_inputs.empty())
   {
-    os << "\tbuffDecompQP := eval.GetBuffDecompQP()\n";
+    os << "\tbuffDecompQP := make([]ringqp.Poly, params.BaseRNSDecompositionVectorSize(params.MaxLevelQ(), 0))\n";
+    os << "\tfor i := range buffDecompQP {\n";
+    os << "\t\tbuffDecompQP[i] = params.RingQP().NewPoly()\n";
+    os << "\t}\n";
     os << "\tvar lastDecompID int = -1\n";
   }
   
@@ -537,24 +540,68 @@ void gen_op_terms_go(
       }
       else
       {
-        os << "\t";
-        gen_cipher_var_id_go(term_object_id, os);
-        os << ", _ = eval.RotateNew(";
-        gen_cipher_var_id_go(input_object_id, os);
-        os << ", " << steps << ")\n";
+        if (term_object_id == input_object_id)
+        {
+          os << "\t_ = eval.Rotate(";
+          gen_cipher_var_id_go(input_object_id, os);
+          os << ", " << steps << ", ";
+          gen_cipher_var_id_go(input_object_id, os);
+          os << ")\n";
+        }
+        else
+        {
+          os << "\tif ";
+          gen_cipher_var_id_go(term_object_id, os);
+          os << " == nil || ";
+          gen_cipher_var_id_go(term_object_id, os);
+          os << ".Level() < ";
+          gen_cipher_var_id_go(input_object_id, os);
+          os << ".Level() {\n\t\t";
+          gen_cipher_var_id_go(term_object_id, os);
+          os << ", _ = eval.RotateNew(";
+          gen_cipher_var_id_go(input_object_id, os);
+          os << ", " << steps << ")\n\t} else {\n\t\t_ = eval.Rotate(";
+          gen_cipher_var_id_go(input_object_id, os);
+          os << ", " << steps << ", ";
+          gen_cipher_var_id_go(term_object_id, os);
+          os << ")\n\t}\n";
+        }
       }
     }
     else if (term->op_code().type() == ir::OpCode::Type::square)
     {
-      // Square: eval.MulRelinNew(ct, ct) + auto-rescale for CKKS
-      os << "\t";
-      gen_cipher_var_id_go(term_object_id, os);
-      os << ", _ = eval.MulRelinNew(";
-      gen_cipher_var_id_go(operands_ctxt_objects_ids[0], os);
-      os << ", ";
-      gen_cipher_var_id_go(operands_ctxt_objects_ids[0], os);
-      os << ")\n";
-      // Auto-rescale after square (cipher-cipher multiplication)
+      if (term_object_id == operands_ctxt_objects_ids[0])
+      {
+        os << "\t_ = eval.MulRelin(";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << ", ";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << ", ";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << ")\n";
+      }
+      else
+      {
+        os << "\tif ";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << " == nil || ";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << ".Level() < ";
+        gen_cipher_var_id_go(operands_ctxt_objects_ids[0], os);
+        os << ".Level() {\n\t\t";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << ", _ = eval.MulRelinNew(";
+        gen_cipher_var_id_go(operands_ctxt_objects_ids[0], os);
+        os << ", ";
+        gen_cipher_var_id_go(operands_ctxt_objects_ids[0], os);
+        os << ")\n\t} else {\n\t\t_ = eval.MulRelin(";
+        gen_cipher_var_id_go(operands_ctxt_objects_ids[0], os);
+        os << ", ";
+        gen_cipher_var_id_go(operands_ctxt_objects_ids[0], os);
+        os << ", ";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << ")\n\t}\n";
+      }
       os << "\t_ = eval.Rescale(";
       gen_cipher_var_id_go(term_object_id, os);
       os << ", ";
@@ -563,32 +610,61 @@ void gen_op_terms_go(
     }
     else if (term->op_code().type() == ir::OpCode::Type::rescale)
     {
-      // Rescale: copy input, then rescale in-place
-      // Lattigo's Rescale modifies in-place, so we need to copy first
-      os << "\t";
-      gen_cipher_var_id_go(term_object_id, os);
-      os << " = ";
-      gen_cipher_var_id_go(operands_ctxt_objects_ids[0], os);
-      os << ".CopyNew()\n";
-      os << "\t_ = eval.Rescale(";
-      gen_cipher_var_id_go(term_object_id, os);
-      os << ", ";
-      gen_cipher_var_id_go(term_object_id, os);
-      os << ")\n";
+      if (term_object_id == operands_ctxt_objects_ids[0])
+      {
+        os << "\t_ = eval.Rescale(";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << ", ";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << ")\n";
+      }
+      else
+      {
+        os << "\tif ";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << " == nil {\n\t\t";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << " = ";
+        gen_cipher_var_id_go(operands_ctxt_objects_ids[0], os);
+        os << ".CopyNew()\n\t\t_ = eval.Rescale(";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << ", ";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << ")\n\t} else {\n\t\t_ = eval.Rescale(";
+        gen_cipher_var_id_go(operands_ctxt_objects_ids[0], os);
+        os << ", ";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << ")\n\t}\n";
+      }
     }
     else if (term->op_code().type() == ir::OpCode::Type::relin)
     {
-      // Relinearize: copy input, then relinearize in-place
-      os << "\t";
-      gen_cipher_var_id_go(term_object_id, os);
-      os << " = ";
-      gen_cipher_var_id_go(operands_ctxt_objects_ids[0], os);
-      os << ".CopyNew()\n";
-      os << "\t_ = eval.Relinearize(";
-      gen_cipher_var_id_go(term_object_id, os);
-      os << ", ";
-      gen_cipher_var_id_go(term_object_id, os);
-      os << ")\n";
+      if (term_object_id == operands_ctxt_objects_ids[0])
+      {
+        os << "\t_ = eval.Relinearize(";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << ", ";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << ")\n";
+      }
+      else
+      {
+        os << "\tif ";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << " == nil {\n\t\t";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << " = ";
+        gen_cipher_var_id_go(operands_ctxt_objects_ids[0], os);
+        os << ".CopyNew()\n\t\t_ = eval.Relinearize(";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << ", ";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << ")\n\t} else {\n\t\t_ = eval.Relinearize(";
+        gen_cipher_var_id_go(operands_ctxt_objects_ids[0], os);
+        os << ", ";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << ")\n\t}\n";
+      }
     }
     else if (term->op_code().type() == ir::OpCode::Type::mod_switch)
     {
@@ -604,17 +680,15 @@ void gen_op_terms_go(
     }
     else if (term->op_code().type() == ir::OpCode::Type::SumVec)
     {
-      // SumVec reduction: sum all slots using log(n) rotations and additions
-      // SumVec(x, size) → x + (x << size/2) + ((x + (x << size/2)) << size/4) + ...
       int size = term->op_code().size();
-      os << "\t// SumVec reduction (size=" << size << ")\n";
-      os << "\t";
-      gen_cipher_var_id_go(term_object_id, os);
-      os << " = ";
-      gen_cipher_var_id_go(operands_ctxt_objects_ids[0], os);
-      os << ".CopyNew()\n";
-      
-      // Generate log2(size) rotations and additions
+      if (term_object_id != operands_ctxt_objects_ids[0])
+      {
+        os << "\t";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << " = ";
+        gen_cipher_var_id_go(operands_ctxt_objects_ids[0], os);
+        os << ".CopyNew()\n";
+      }
       int step = size / 2;
       while (step >= 1)
       {
@@ -622,20 +696,17 @@ void gen_op_terms_go(
         os << "\t\trotated, _ := eval.RotateNew(";
         gen_cipher_var_id_go(term_object_id, os);
         os << ", " << step << ")\n";
-        os << "\t\t";
+        os << "\t\t_ = eval.Add(";
         gen_cipher_var_id_go(term_object_id, os);
-        os << ", _ = eval.AddNew(";
+        os << ", rotated, ";
         gen_cipher_var_id_go(term_object_id, os);
-        os << ", rotated)\n";
+        os << ")\n";
         os << "\t}\n";
         step /= 2;
       }
     }
     else if (term->op_code().type() == ir::OpCode::Type::bootstrap)
     {
-      // Bootstrap: refresh ciphertext to max level
-      // Requires bootstrapper to be initialized (see gen_main_go)
-      os << "\t// Bootstrap: refresh to max level\n";
       os << "\t";
       gen_cipher_var_id_go(term_object_id, os);
       os << ", _ = bootstrapper.Bootstrap(";
@@ -644,7 +715,6 @@ void gen_op_terms_go(
     }
     else if (term->op_code().type() == ir::OpCode::Type::negate)
     {
-      // Negate: eval.NegNew(ct)
       os << "\t";
       gen_cipher_var_id_go(term_object_id, os);
       os << ", _ = eval.NegNew(";
@@ -653,47 +723,99 @@ void gen_op_terms_go(
     }
     else
     {
-      // Binary operations: add, sub, mul
       auto op_type = ir::OpType{term->op_code().type(), std::move(operands_types)};
       auto op_it = operation_mapping.find(op_type);
       
       if (op_it == operation_mapping.end())
       {
-        os << "\t// WARNING: Unsupported operation " << term->op_code() << "\n";
         continue;
       }
       
       string op_name(op_it->second);
-      
-      os << "\t";
-      gen_cipher_var_id_go(term_object_id, os);
-      os << ", _ = eval." << op_name << "New(";
-      
-      // First operand (always cipher for these ops)
       auto operand0 = term->operands()[0];
-      if (operand0->type() == ir::Term::Type::cipher)
-        gen_cipher_var_id_go(operands_ctxt_objects_ids[0], os);
-      else
-        gen_plain_var_id_go(operand0->id(), os);
-      
-      os << ", ";
-      
-      // Second operand
       auto operand1 = term->operands()[1];
-      if (operand1->type() == ir::Term::Type::cipher)
-        gen_cipher_var_id_go(operands_ctxt_objects_ids[1], os);
-      else
-        gen_plain_var_id_go(operand1->id(), os);
-      
-      os << ")\n";
-      
-      if (op_name == "MulRelin")
+
+      if (operand0->type() == ir::Term::Type::cipher && term_object_id == operands_ctxt_objects_ids[0])
       {
-        os << "\t_ = eval.Rescale(";
-        gen_cipher_var_id_go(term_object_id, os);
+        os << "\t_ = eval." << op_name << "(";
+        gen_cipher_var_id_go(operands_ctxt_objects_ids[0], os);
+        os << ", ";
+        if (operand1->type() == ir::Term::Type::cipher)
+          gen_cipher_var_id_go(operands_ctxt_objects_ids[1], os);
+        else
+          gen_plain_var_id_go(operand1->id(), os);
         os << ", ";
         gen_cipher_var_id_go(term_object_id, os);
         os << ")\n";
+        if (op_name == "MulRelin")
+        {
+          os << "\t_ = eval.Rescale(";
+          gen_cipher_var_id_go(term_object_id, os);
+          os << ", ";
+          gen_cipher_var_id_go(term_object_id, os);
+          os << ")\n";
+        }
+      }
+      else if (op_name == "Add" && operand1->type() == ir::Term::Type::cipher &&
+               term_object_id == operands_ctxt_objects_ids[1])
+      {
+        os << "\t_ = eval.Add(";
+        if (operand0->type() == ir::Term::Type::cipher)
+          gen_cipher_var_id_go(operands_ctxt_objects_ids[0], os);
+        else
+          gen_plain_var_id_go(operand0->id(), os);
+        os << ", ";
+        gen_cipher_var_id_go(operands_ctxt_objects_ids[1], os);
+        os << ", ";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << ")\n";
+      }
+      else
+      {
+        os << "\tif ";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << " == nil";
+        if (operand0->type() == ir::Term::Type::cipher)
+        {
+          os << " || ";
+          gen_cipher_var_id_go(term_object_id, os);
+          os << ".Level() < ";
+          gen_cipher_var_id_go(operands_ctxt_objects_ids[0], os);
+          os << ".Level()";
+        }
+        os << " {\n\t\t";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << ", _ = eval." << op_name << "New(";
+        if (operand0->type() == ir::Term::Type::cipher)
+          gen_cipher_var_id_go(operands_ctxt_objects_ids[0], os);
+        else
+          gen_plain_var_id_go(operand0->id(), os);
+        os << ", ";
+        if (operand1->type() == ir::Term::Type::cipher)
+          gen_cipher_var_id_go(operands_ctxt_objects_ids[1], os);
+        else
+          gen_plain_var_id_go(operand1->id(), os);
+        os << ")\n\t} else {\n\t\t_ = eval." << op_name << "(";
+        if (operand0->type() == ir::Term::Type::cipher)
+          gen_cipher_var_id_go(operands_ctxt_objects_ids[0], os);
+        else
+          gen_plain_var_id_go(operand0->id(), os);
+        os << ", ";
+        if (operand1->type() == ir::Term::Type::cipher)
+          gen_cipher_var_id_go(operands_ctxt_objects_ids[1], os);
+        else
+          gen_plain_var_id_go(operand1->id(), os);
+        os << ", ";
+        gen_cipher_var_id_go(term_object_id, os);
+        os << ")\n\t}\n";
+        if (op_name == "MulRelin")
+        {
+          os << "\t_ = eval.Rescale(";
+          gen_cipher_var_id_go(term_object_id, os);
+          os << ", ";
+          gen_cipher_var_id_go(term_object_id, os);
+          os << ")\n";
+        }
       }
     }
   }
@@ -846,7 +968,7 @@ func (s *RamMemSampler) Stop() {
   os << "\t\tLogP:            []int{";
   for (size_t i = 0; i < params.log_p.size(); ++i) {
     if (i > 0) os << ", ";
-    os << std::max(50, params.log_p[i]);
+    os << (ckks_params ? params.log_p[i] : std::max(50, params.log_p[i]));
   }
   os << "},\n";
   
@@ -959,7 +1081,6 @@ func (s *RamMemSampler) Stop() {
 	encodedInputs := make(map[string]*rlwe.Plaintext)
 	encryptedOutputs := make(map[string]*rlwe.Ciphertext)
 	encodedOutputs := make(map[string]*rlwe.Plaintext)
-	encryptStart := time.Now()
 )";
 
   // Generate encrypted inputs for each unique cipher input label
@@ -993,7 +1114,20 @@ func (s *RamMemSampler) Stop() {
   }
 
   os << R"(
-	encryptMillis := float64(time.Since(encryptStart).Microseconds()) / 1000.0
+	encryptReps := 0
+	encryptBenchStart := time.Now()
+	for time.Since(encryptBenchStart) < 2*time.Millisecond || encryptReps < *repetitions {
+		for range encryptedInputs {
+			pt := hefloat.NewPlaintext(params, params.MaxLevel())
+			_ = encoder.Encode(values, pt)
+			_, _ = enc.EncryptNew(pt)
+		}
+		encryptReps++
+	}
+	encryptMillis := 0.0
+	if encryptReps > 0 {
+		encryptMillis = (float64(time.Since(encryptBenchStart).Nanoseconds()) / 1e6) / float64(encryptReps)
+	}
 	precisionChecked := false
 )";
   if (can_generate_primitive_reference(func))
@@ -1013,9 +1147,8 @@ func (s *RamMemSampler) Stop() {
   os << "\t\t" << func_name;
   os << R"((encryptedInputs, encodedInputs, encryptedOutputs, encodedOutputs, encoder, enc, eval, params)
 	}
-  elapsed := float64(time.Since(computeStart).Microseconds()) / 1000.0
+  elapsed := float64(time.Since(computeStart).Nanoseconds()) / 1e6
   computeMillis := elapsed / float64(*repetitions)
-	decryptStart := time.Now()
 	maxAbsError := 0.0
 	for name, ct := range encryptedOutputs {
 		pt := dec.DecryptNew(ct)
@@ -1028,7 +1161,20 @@ func (s *RamMemSampler) Stop() {
 		}
 		fmt.Printf("%s: [%.4f, %.4f, %.4f, ...]\n", name, values[0], values[1], values[2])
 	}
-	decryptMillis := float64(time.Since(decryptStart).Microseconds()) / 1000.0
+	decryptReps := 0
+	decryptStart := time.Now()
+	for time.Since(decryptStart) < 2*time.Millisecond || decryptReps < *repetitions {
+		for _, ct := range encryptedOutputs {
+			pt := dec.DecryptNew(ct)
+			vals := make([]float64, params.MaxSlots())
+			_ = encoder.Decode(pt, vals)
+		}
+		decryptReps++
+	}
+	decryptMillis := 0.0
+	if decryptReps > 0 {
+		decryptMillis = (float64(time.Since(decryptStart).Nanoseconds()) / 1e6) / float64(decryptReps)
+	}
 	levelsEnd := -1
 	for _, ct := range encryptedOutputs { levelsEnd = ct.Level(); break }
 	maxAbsErrorJSON := "null"
