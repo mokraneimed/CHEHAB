@@ -206,6 +206,12 @@ def parse_arguments(args=None):
         default=False,
         help="Start fresh training from step 0 (ignores existing checkpoints; default is auto-resume)",
     )
+    train_parser.add_argument(
+        "--n_pref",
+        type=int,
+        default=11,
+        help="Number of preference points (default: 11 for 10 vectors; 9 for 8 vectors, dropping the 2 least important extreme-keys vectors)",
+    )
 
     # ─── TEST COMMAND ─────────────────────────────────────────────────────────
     test_parser = subparsers.add_parser("test", help="Test the agent")
@@ -363,6 +369,7 @@ def main(args=None):
                 algo=parsed_args.algo,
                 checkpoint_path=parsed_args.checkpoint,
                 fresh_start=parsed_args.fresh_start,
+                n_pref=parsed_args.n_pref,
             )
         else:
             # Unified & Constrained frameworks
@@ -388,6 +395,7 @@ def main(args=None):
                 eval_freq=parsed_args.eval_freq,
                 checkpoint_path=parsed_args.checkpoint,
                 fresh_start=parsed_args.fresh_start,
+                n_pref=parsed_args.n_pref,
             )
 
     # ─────────────────────────────── TEST ─────────────────────────────

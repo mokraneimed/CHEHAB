@@ -52,15 +52,27 @@ def train_agent(
     eval_freq: int = 10000,
     checkpoint_path: str = None,
     fresh_start: bool = False,
+    n_pref: int = 11,
 ):
     set_random_seed(seed)
     
     # MORL setup: 'pareto' -> MORL + constrained (unified); 'single' -> constrained only
     if pref_mode == "single":
         pref_list = [[1.0, 0.0]]
+    elif n_pref == 9:
+        # Drop 2 least important extreme-keys vectors ([0.1, 0.9] and [0.2, 0.8])
+        # Preserves speed focus [1.0, 0.0], balanced [0.5, 0.5], down to [0.3, 0.7] (8 vectors)
+        all_prefs = generate_pref_list(11)
+        pref_list = all_prefs[:-2]
+        print(f"[Preferences] Using {len(pref_list)} preference vectors (dropped 2 least important extreme-keys vectors): {pref_list}")
+    elif n_pref == 10:
+        # Drop 1 least important extreme-keys vector ([0.1, 0.9])
+        all_prefs = generate_pref_list(11)
+        pref_list = all_prefs[:-1]
+        print(f"[Preferences] Using {len(pref_list)} preference vectors (dropped 1 extreme-keys vector): {pref_list}")
     else:
-        N = 11
-        pref_list = generate_pref_list(N)
+        pref_list = generate_pref_list(n_pref)
+        print(f"[Preferences] Generated {len(pref_list)} preference vectors (n_points={n_pref}): {pref_list}")
 
     # Resolve the env class in the PARENT process
     EnvCls = get_env_class()

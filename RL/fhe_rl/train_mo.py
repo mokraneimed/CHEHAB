@@ -30,7 +30,7 @@ def set_random_seed(seed: int = 42):
 def train_agent_mo(expressions_file: str, embeddings_model, total_timesteps: int = 1_000_000, num_envs: int = 8, ent_coef: float = 0.1, seed: int = 42, 
                 lambda_env: float = 0.0, lambda_kl: float = 0.0, n_cycle: int = 1, n_budget: int = 5, eval_freq: int = 10000,
                 budget_options: list = None, constraint_method: str = "lagrangian_od_ov", algo: str = "ppo",
-                checkpoint_path: str = None, fresh_start: bool = False):
+                checkpoint_path: str = None, fresh_start: bool = False, n_pref: int = 11):
     set_random_seed(seed)
     N=2
     pref_list = generate_pref_list(N)
