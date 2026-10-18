@@ -38,14 +38,25 @@ def load_embeddings(tokenizer_type=None, checkpoint_path=None, device=None):
         model = load_embedding_model_dynamic(checkpoint_path, device)
         return model, None
 
-def load_embeddings_from_config(tokenizer_type=None):
-    """Load the embedder selected in AGENT_CONFIG['embeddings_model_type'].
+def load_embeddings_from_config(tokenizer_type=None, embedder_type=None):
+    """Load the embedder selected in AGENT_CONFIG['embeddings_model_type'] or embedder_type.
 
     Returns (model, tokenizer) to match the TRAE loader. The GNN extractor
     has no tokenizer, so the second value is None.
     """
     try:
-        embedder_type = get_embeddings_model_type()
+        if embedder_type is not None:
+            if isinstance(embedder_type, str):
+                low = embedder_type.lower().strip()
+                if low in ("gnn", "gnn_autoencoder"):
+                    embedder_type = EmbeddingsModelType.GNN_AUTOENCODER
+                elif low in ("trae", "transformer_autoencoder"):
+                    embedder_type = EmbeddingsModelType.TRANSFORMER_AUTOENCODER
+                else:
+                    raise ValueError(f"Unknown embedder type: {embedder_type}")
+        else:
+            embedder_type = get_embeddings_model_type()
+
         if embedder_type == EmbeddingsModelType.GNN_AUTOENCODER:
             from .gnn_embeddings import FHEFeatureExtractor
             return FHEFeatureExtractor(model_path=get_model_path("gnn_embeddings_model")), None

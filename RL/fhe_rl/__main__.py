@@ -36,6 +36,7 @@ from .config import (
     print_config,
     set_framework,
     get_framework_spec,
+    set_embeddings_model_type,
 )
 from .baseline.run_baseline import run_agent as run_agent_baseline
 
@@ -53,6 +54,15 @@ def parse_arguments(args=None):
         choices=["dynamic", "bpe"],
         default=get_tokenizer_type(),
         help="Tokenizer type to use (default: from config)",
+    )
+
+    # Embedder selection
+    parser.add_argument(
+        "--embedder",
+        type=str,
+        choices=["gnn", "trae"],
+        default="gnn",
+        help="Embedder architecture to use: 'gnn' (Graph2Seq GNN AE, default) or 'trae' (Transformer Autoencoder)",
     )
 
     # Add config flag
@@ -212,6 +222,13 @@ def parse_arguments(args=None):
         default=11,
         help="Number of preference points (default: 11 for 10 vectors; 9 for 8 vectors, dropping the 2 least important extreme-keys vectors)",
     )
+    train_parser.add_argument(
+        "--embedder",
+        type=str,
+        choices=["gnn", "trae"],
+        default="gnn",
+        help="Embedder architecture to use (default: gnn)",
+    )
 
     # ─── TEST COMMAND ─────────────────────────────────────────────────────────
     test_parser = subparsers.add_parser("test", help="Test the agent")
@@ -325,9 +342,20 @@ def main(args=None):
     set_framework(framework_name)
     spec = get_framework_spec()
 
+    # Embedder selection & propagation
+    embedder_choice = getattr(parsed_args, "embedder", "gnn")
+    set_embeddings_model_type(embedder_choice)
+
     # ─────────────────────────────── TRAIN ────────────────────────────
     if mode == "train":
-        embeddings, tokenizer = load_embeddings_from_config(parsed_args.tokenizer_type)
+        embeddings, tokenizer = load_embeddings_from_config(parsed_args.tokenizer_type, embedder_type=embedder_choice)
+        emb_cls = type(embeddings).__name__ if embeddings is not None else "None"
+        emb_path = get_model_path("gnn_embeddings_model" if embedder_choice == "gnn" else "dynamic_embeddings_model")
+        emb_sz = os.path.getsize(emb_path) if os.path.exists(emb_path) else 0
+        print(f"=== Embedder Selection: {embedder_choice.upper()} ===")
+        print(f"  Class:        {emb_cls}")
+        print(f"  Output Dim:   256")
+        print(f"  Weights File: {emb_path} ({emb_sz / (1024*1024):.2f} MB)")
 
         # Parse budgets with smart defaults based on constraint metric
         budget_options = None
@@ -370,6 +398,7 @@ def main(args=None):
                 checkpoint_path=parsed_args.checkpoint,
                 fresh_start=parsed_args.fresh_start,
                 n_pref=parsed_args.n_pref,
+                embedder_type=embedder_choice,
             )
         else:
             # Unified & Constrained frameworks
@@ -396,6 +425,7 @@ def main(args=None):
                 checkpoint_path=parsed_args.checkpoint,
                 fresh_start=parsed_args.fresh_start,
                 n_pref=parsed_args.n_pref,
+                embedder_type=embedder_choice,
             )
 
     # ─────────────────────────────── TEST ─────────────────────────────
@@ -403,7 +433,7 @@ def main(args=None):
         if framework_name == "morl":
             print("The 'test' command supports --framework constrained or unified.")
             sys.exit(1)
-        embeddings, tokenizer = load_embeddings_from_config(parsed_args.tokenizer_type)
+        embeddings, tokenizer = load_embeddings_from_config(parsed_args.tokenizer_type, embedder_type=embedder_choice)
 
         agent_zip = (
             parsed_args.model
@@ -444,7 +474,7 @@ def main(args=None):
 
     # ─────────────────────────────── RUN ──────────────────────────────
     elif mode == "run":
-        embeddings, tokenizer = load_embeddings_from_config(parsed_args.tokenizer_type)
+        embeddings, tokenizer = load_embeddings_from_config(parsed_args.tokenizer_type, embedder_type=embedder_choice)
         input_file = parsed_args.input_file
         output_file = parsed_args.output_file
 

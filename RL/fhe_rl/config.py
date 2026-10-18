@@ -58,7 +58,7 @@ TOKENIZER_CONFIG = {
 AGENT_CONFIG = {
     "device": "cuda" if torch.cuda.is_available() else "cpu",
     "algorithm": RLAlgorithm.LAGRANGIAN_PPO,
-    "embeddings_model_type": EmbeddingsModelType.TRANSFORMER_AUTOENCODER,
+    "embeddings_model_type": EmbeddingsModelType.GNN_AUTOENCODER,
 }
 
 # ----------------------------------------------------------------------------
@@ -166,6 +166,18 @@ def get_rl_algorithm() -> RLAlgorithm:
 
 def get_embeddings_model_type() -> EmbeddingsModelType:
     return AGENT_CONFIG["embeddings_model_type"]
+
+def set_embeddings_model_type(embedder_type: str | EmbeddingsModelType):
+    if isinstance(embedder_type, str):
+        low = embedder_type.lower().strip()
+        if low in ("gnn", "gnn_autoencoder"):
+            AGENT_CONFIG["embeddings_model_type"] = EmbeddingsModelType.GNN_AUTOENCODER
+        elif low in ("trae", "transformer_autoencoder"):
+            AGENT_CONFIG["embeddings_model_type"] = EmbeddingsModelType.TRANSFORMER_AUTOENCODER
+        else:
+            raise ValueError(f"Unknown embedder type: {embedder_type}. Expected 'gnn' or 'trae'.")
+    else:
+        AGENT_CONFIG["embeddings_model_type"] = embedder_type
 
 def _resolve_class(dotted_path: str):
     module_path, class_name = dotted_path.rsplit(".", 1)
