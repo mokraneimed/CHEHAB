@@ -21,7 +21,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -112,6 +115,12 @@ def parse_args() -> argparse.Namespace:
         "--excel-filename",
         default="all_optimizers_dnn_benchmarks.xlsx",
         help="name of the combined Excel workbook (default: all_optimizers_dnn_benchmarks.xlsx)",
+    )
+    parser.add_argument(
+        "--backend",
+        choices=("lattigo", "heongpu"),
+        default="lattigo",
+        help="cryptographic backend: lattigo (default) or heongpu",
     )
     parser.add_argument(
         "--skip-build",
@@ -213,6 +222,7 @@ def main() -> int:
             sys.executable,
             str(RUNNER_SCRIPT),
             "--benchmarks", args.benchmarks,
+            "--backend", args.backend,
             "--optimizer", cli_opt,
             "--repetitions", str(args.repetitions),
             "--timeout", str(args.timeout),
@@ -229,27 +239,33 @@ def main() -> int:
             overall_success = False
 
         if csv_file.is_file():
-            df = pd.read_csv(csv_file)
-            dfs_by_sheet[sheet_name] = df
-
-            # Save individual excel file
-            with pd.ExcelWriter(xlsx_file, engine="openpyxl") as writer:
-                df.to_excel(writer, sheet_name=sheet_name, index=False)
-                format_excel_sheet(writer.sheets[sheet_name])
-            print(f"  Saved individual sheet: {xlsx_file.name} ({len(df)} rows)")
+            if pd is not None:
+                try:
+                    df = pd.read_csv(csv_file)
+                    dfs_by_sheet[sheet_name] = df
+                    with pd.ExcelWriter(xlsx_file, engine="openpyxl") as writer:
+                        df.to_excel(writer, sheet_name=sheet_name, index=False)
+                        format_excel_sheet(writer.sheets[sheet_name])
+                    print(f"  Saved individual sheet: {xlsx_file.name} ({len(df)} rows)")
+                except Exception as e:
+                    print(f"  Warning: Could not write Excel file {xlsx_file}: {e}")
+            else:
+                print(f"  Saved CSV: {csv_file.name} (install pandas & openpyxl for Excel export)")
         else:
             print(f"  Error: Output CSV {csv_file} was not generated!", file=sys.stderr)
 
     # Save combined multi-sheet Excel workbook
-    if dfs_by_sheet:
-        combined_xlsx = args.output_dir / args.excel_filename
-        print(f"\nWriting combined multi-sheet Excel workbook: {combined_xlsx}...")
-        with pd.ExcelWriter(combined_xlsx, engine="openpyxl") as writer:
-            for sheet_name, df in dfs_by_sheet.items():
-                df.to_excel(writer, sheet_name=sheet_name, index=False)
-                format_excel_sheet(writer.sheets[sheet_name])
-
-        print(f"Combined Excel saved successfully: {combined_xlsx}")
+    if dfs_by_sheet and pd is not None:
+        try:
+            combined_xlsx = args.output_dir / args.excel_filename
+            print(f"\nWriting combined multi-sheet Excel workbook: {combined_xlsx}...")
+            with pd.ExcelWriter(combined_xlsx, engine="openpyxl") as writer:
+                for sheet_name, df in dfs_by_sheet.items():
+                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+                    format_excel_sheet(writer.sheets[sheet_name])
+            print(f"Combined Excel saved successfully: {combined_xlsx}")
+        except Exception as e:
+            print(f"  Warning: Could not write combined Excel file: {e}")
 
     print("\n" + "=" * 80)
     print("ALL RUNS COMPLETED")

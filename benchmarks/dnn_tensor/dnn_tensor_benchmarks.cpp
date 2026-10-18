@@ -243,6 +243,7 @@ int main(int argc, char **argv)
   std::cout.setf(std::ios::unitbuf);
   std::cerr.setf(std::ios::unitbuf);
   string benchmark = "cryptonets";
+  string backend = "lattigo";
   bool global_bsgs = false;
   bool optimize = true;
   string optimizer = "trs";
@@ -253,6 +254,15 @@ int main(int argc, char **argv)
   {
     const string argument = argv[index];
     if (argument == "--benchmark" && ++index < argc) benchmark = argv[index];
+    else if (argument == "--backend" && ++index < argc)
+    {
+      const string value = argv[index];
+      if (value != "lattigo" && value != "heongpu")
+      {
+        throw invalid_argument("--backend must be lattigo or heongpu");
+      }
+      backend = value;
+    }
     else if (argument == "--slots" && ++index < argc) user_slots = stoi(argv[index]);
     else if (argument == "--bsgs-base" && ++index < argc)
     {
@@ -324,23 +334,51 @@ int main(int argc, char **argv)
     }
   }
 
-  filesystem::create_directories("he");
-  const string output = "he/" + function_name + "_auto.go";
-  ofstream generated(output);
-  if (!generated) throw runtime_error("cannot create " + output);
-
-  if (has_orion_ckks_params(benchmark))
+  string output;
+  if (backend == "lattigo")
   {
-    ckks::CKKSParams params = get_orion_ckks_params(benchmark);
-    Compiler::gen_lattigo_code(func, generated, params);
+    filesystem::create_directories("he");
+    output = "he/" + function_name + "_auto.go";
+    ofstream generated(output);
+    if (!generated) throw runtime_error("cannot create " + output);
+
+    if (has_orion_ckks_params(benchmark))
+    {
+      ckks::CKKSParams params = get_orion_ckks_params(benchmark);
+      Compiler::gen_lattigo_code(func, generated, params);
+    }
+    else
+    {
+      Compiler::gen_lattigo_code(func, generated);
+    }
   }
   else
   {
-    Compiler::gen_lattigo_code(func, generated);
+    filesystem::create_directories("heongpu");
+    output = "heongpu/generated_fhe.cu";
+    ofstream generated(output);
+    if (!generated) throw runtime_error("cannot create " + output);
+
+    if (has_orion_ckks_params(benchmark))
+    {
+      ckks::CKKSParams params = get_orion_ckks_params(benchmark);
+      Compiler::gen_heongpu_code(func, generated, 1, params);
+    }
+    else
+    {
+      Compiler::gen_heongpu_code(func, generated, 1);
+    }
+
+    // Also save a benchmark-named copy for reference
+    const string named_output = "heongpu/" + function_name + "_auto.cu";
+    try {
+      filesystem::copy_file(output, named_output, filesystem::copy_options::overwrite_existing);
+    } catch (...) {}
   }
 
   cout << "Tensor benchmark: " << benchmark << '\n'
        << "SIMD slots: " << slots << '\n'
+       << "Backend: " << backend << '\n'
        << "DSL generation time: "
        << chrono::duration<double, milli>(chrono::steady_clock::now() - started).count() << " ms\n"
        << "Generated: " << output << endl;

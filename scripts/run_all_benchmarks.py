@@ -29,6 +29,10 @@ class Benchmark:
     def generated_go(self) -> Path:
         return BUILD_DIR / "benchmarks" / "dnn_tensor" / "he" / f"tensor_{self.name}_auto.go"
 
+    @property
+    def generated_cu(self) -> Path:
+        return BUILD_DIR / "benchmarks" / "dnn_tensor" / "heongpu" / "generated_fhe.cu"
+
 
 BENCHMARKS = {name: Benchmark(name) for name in ("conv2d", "full_dnn", "cryptonets", "mlp", "lola", "alexnet")}
 CSV_FIELDS = [
@@ -43,6 +47,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="CHEHAB encrypted DNN benchmark runner")
     parser.add_argument("--benchmarks", default=",".join(BENCHMARKS),
                         help="comma-separated: conv2d,full_dnn,cryptonets,mlp,lola,alexnet")
+    parser.add_argument("--backend", choices=("lattigo", "heongpu"), default="lattigo",
+                        help="cryptographic backend: lattigo (default) or heongpu")
     parser.add_argument("--repetitions", type=int, default=3,
                         help="encrypted inference repetitions per benchmark")
     parser.add_argument("--optimizer", choices=("trs", "original_rl", "morl", "constrained_rl", "none"),
@@ -112,9 +118,9 @@ def executable_path() -> Path:
     return BUILD_DIR / "benchmarks" / "dnn_tensor" / f"{TARGET}{suffix}"
 
 
-def empty_row(benchmark: Benchmark, repetitions: int) -> dict[str, Any]:
+def empty_row(benchmark: Benchmark, repetitions: int, backend: str = "lattigo") -> dict[str, Any]:
     return {
-        "benchmark": benchmark.name, "backend": "lattigo", "repetitions": repetitions,
+        "benchmark": benchmark.name, "backend": backend, "repetitions": repetitions,
         "dsl_generation_ms": "", "encrypt_ms": "", "compute_ms": "", "decrypt_ms": "",
         "total_measured_ms": "", "rotation_keys": "", "bootstrap_count": "", "level_start": "",
         "level_end": "", "levels_consumed": "", "max_abs_error": "", "precision_checked": False,
@@ -123,9 +129,9 @@ def empty_row(benchmark: Benchmark, repetitions: int) -> dict[str, Any]:
 
 
 def execute_benchmark(benchmark: Benchmark, executable: Path, args: argparse.Namespace) -> dict[str, Any]:
-    row = empty_row(benchmark, args.repetitions)
-    cmd = [str(executable), "--benchmark", benchmark.name, "--optimizer", args.optimizer,
-           "--bsgs-base", args.bsgs_base]
+    row = empty_row(benchmark, args.repetitions, backend=args.backend)
+    cmd = [str(executable), "--benchmark", benchmark.name, "--backend", args.backend,
+           "--optimizer", args.optimizer, "--bsgs-base", args.bsgs_base]
     if args.optimizer == "morl":
         cmd.extend(["--w-ops", str(args.w_ops)])
     try:
@@ -140,33 +146,74 @@ def execute_benchmark(benchmark: Benchmark, executable: Path, args: argparse.Nam
 
     dsl_output = dsl.stdout + dsl.stderr
     row["dsl_generation_ms"] = dsl_time(dsl_output) or ""
-    row["generated_file"] = str(benchmark.generated_go)
+    gen_file = benchmark.generated_go if args.backend == "lattigo" else benchmark.generated_cu
+    row["generated_file"] = str(gen_file)
     if dsl.returncode:
         row.update(run_status=f"DSL_FAILED_{dsl.returncode}", error_message=first_lines(dsl_output))
         return row
-    if not benchmark.generated_go.is_file():
-        row.update(run_status="GENERATE_FAILED", error_message="Generated Go program was not created")
+    if not gen_file.is_file():
+        row.update(run_status="GENERATE_FAILED", error_message=f"Generated {args.backend} file was not created")
         return row
 
-    try:
-        go = run(["go", "run", str(benchmark.generated_go), "-repetitions", str(args.repetitions)],
-                 LATTIGO_DIR, args.timeout)
-    except subprocess.TimeoutExpired:
-        row.update(
-            total_measured_ms="TIMEOUT",
-            run_status="TIMEOUT",
-            error_message=f"Encrypted benchmark exceeded the {args.timeout}s timeout",
-        )
-        return row
+    if args.backend == "lattigo":
+        try:
+            go = run(["go", "run", str(benchmark.generated_go), "-repetitions", str(args.repetitions)],
+                     LATTIGO_DIR, args.timeout)
+        except subprocess.TimeoutExpired:
+            row.update(
+                total_measured_ms="TIMEOUT",
+                run_status="TIMEOUT",
+                error_message=f"Encrypted benchmark exceeded the {args.timeout}s timeout",
+            )
+            return row
 
-    go_output = go.stdout + go.stderr
-    if go.returncode:
-        row.update(run_status="LATTIGO_FAILED", error_message=first_lines(go_output))
-        return row
-    metrics = parse_go_metrics(go_output)
-    if metrics is None:
-        row.update(run_status="METRICS_MISSING", error_message="Generated Go program did not emit BENCHMARK_METRICS")
-        return row
+        go_output = go.stdout + go.stderr
+        if go.returncode:
+            row.update(run_status="LATTIGO_FAILED", error_message=first_lines(go_output))
+            return row
+        metrics = parse_go_metrics(go_output)
+        if metrics is None:
+            row.update(run_status="METRICS_MISSING", error_message="Generated Go program did not emit BENCHMARK_METRICS")
+            return row
+    else:
+        # HEonGPU backend execution
+        heongpu_dir = BUILD_DIR / "benchmarks" / "dnn_tensor" / "heongpu"
+        cu_build_dir = heongpu_dir / "build_cu"
+        cu_bin = cu_build_dir / ("generated_fhe.exe" if sys.platform == "win32" else "generated_fhe")
+        try:
+            if (heongpu_dir / "CMakeLists.txt").is_file():
+                if not ((cu_build_dir / "Makefile").is_file() or (cu_build_dir / "build.ninja").is_file()):
+                    cfg = run(["cmake", "-S", ".", "-B", "build_cu"], heongpu_dir, args.timeout)
+                    if cfg.returncode != 0:
+                        row.update(run_status="GPU_BUILD_PENDING", error_message=first_lines(cfg.stdout + cfg.stderr))
+                        return row
+                bld = run(["cmake", "--build", "build_cu"], heongpu_dir, args.timeout)
+                if bld.returncode != 0:
+                    row.update(run_status="HEONGPU_BUILD_FAILED", error_message=first_lines(bld.stdout + bld.stderr))
+                    return row
+            if not cu_bin.is_file():
+                row.update(run_status="GPU_BUILD_PENDING", error_message=f"CUDA build required: {cu_bin}")
+                return row
+            cu_res = run([str(cu_bin), "-repetitions", str(args.repetitions)], heongpu_dir, args.timeout)
+        except subprocess.TimeoutExpired:
+            row.update(
+                total_measured_ms="TIMEOUT",
+                run_status="TIMEOUT",
+                error_message=f"Encrypted HEonGPU benchmark exceeded the {args.timeout}s timeout",
+            )
+            return row
+        except Exception as e:
+            row.update(run_status="HEONGPU_FAILED", error_message=str(e))
+            return row
+
+        cu_output = cu_res.stdout + cu_res.stderr
+        if cu_res.returncode:
+            row.update(run_status="HEONGPU_FAILED", error_message=first_lines(cu_output))
+            return row
+        metrics = parse_go_metrics(cu_output)
+        if metrics is None:
+            row.update(run_status="METRICS_MISSING", error_message="Generated HEonGPU program did not emit BENCHMARK_METRICS")
+            return row
 
     encrypt = float(metrics["encrypt_ms"])
     compute = float(metrics["compute_ms"])
@@ -216,7 +263,7 @@ def main() -> int:
     if args.repetitions <= 0 or args.timeout <= 0:
         raise ValueError("--repetitions and --timeout must be positive")
     benchmarks = select_benchmarks(args.benchmarks)
-    if not (LATTIGO_DIR / "go.mod").is_file():
+    if args.backend == "lattigo" and not (LATTIGO_DIR / "go.mod").is_file():
         raise RuntimeError(f"Missing Lattigo module: {LATTIGO_DIR / 'go.mod'}")
 
     if not args.skip_build:
