@@ -95,4 +95,5 @@ stdbuf -oL -eL python -u -m fhe_rl \
     --algo "$ALGO" \
     --budget_encoding "$ENCODING" \
     --policy_variant "$VARIANT" \
+    "$@" \
     > "$PROJ_ROOT/logs/train_unified_ram_film_${SLURM_JOB_ID:-local}.log" 2>&1

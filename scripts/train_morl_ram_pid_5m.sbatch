@@ -80,4 +80,5 @@ stdbuf -oL -eL python -u -m fhe_rl \
     --method "$METHOD" \
     --budgets "$BUDGETS" \
     --num_envs $NUM_ENVS \
+    "$@" \
     2>&1 | tee -a "$PROJ_ROOT/logs/train_morl_ram_pid_5m_${SLURM_JOB_ID:-local}.log"

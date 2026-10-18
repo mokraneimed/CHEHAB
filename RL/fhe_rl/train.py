@@ -50,6 +50,8 @@ def train_agent(
     denom_factor: int = 4,
     curriculum: bool = False,
     eval_freq: int = 10000,
+    checkpoint_path: str = None,
+    fresh_start: bool = False,
 ):
     set_random_seed(seed)
     
@@ -93,22 +95,49 @@ def train_agent(
     checkpoint_dir = f"./checkpoints/{run_name}"
     os.makedirs(checkpoint_dir, exist_ok=True)
 
-    # Checkpoint resumption (regex-based: robust to extra underscores/variants)
-    checkpoint_path = None
+    # Checkpoint resumption: default is auto-resume from latest checkpoint for this config
     steps_done = 0
     _CKPT_RE = re.compile(r"^rl_model_(\d+)_steps\.zip$")
-    if os.path.exists(checkpoint_dir):
+
+    if fresh_start:
+        checkpoint_path = None
+        print(f"[Resume] --fresh_start specified: starting fresh training from step 0 (ignoring existing checkpoints).")
+    elif checkpoint_path:
+        if not os.path.exists(checkpoint_path):
+            raise FileNotFoundError(f"Specified checkpoint file not found: {checkpoint_path}")
+        m = _CKPT_RE.match(os.path.basename(checkpoint_path))
+        if m:
+            steps_done = int(m.group(1))
+        print(f"[Resume] Explicit checkpoint provided: {checkpoint_path} (step {steps_done:,})")
+    else:
+        # Auto-detect latest checkpoint across all matching runs
         candidates = []
-        for f in os.listdir(checkpoint_dir):
-            m = _CKPT_RE.match(f)
-            if m:
-                candidates.append((int(m.group(1)), f))
+        # 1. Search inside the current job's checkpoint dir
+        if os.path.exists(checkpoint_dir):
+            for f in os.listdir(checkpoint_dir):
+                m = _CKPT_RE.match(f)
+                if m:
+                    candidates.append((int(m.group(1)), os.path.join(checkpoint_dir, f)))
+
+        # 2. Search other run dirs matching this configuration (e.g. model_*_nato_sc_film_a)
+        if os.path.exists("./checkpoints"):
+            import glob
+            config_pattern = f"./checkpoints/model_*_{constraint_method}_{policy_variant}"
+            for d in glob.glob(config_pattern):
+                if os.path.isdir(d):
+                    for f in os.listdir(d):
+                        m = _CKPT_RE.match(f)
+                        if m:
+                            candidates.append((int(m.group(1)), os.path.join(d, f)))
+
         if candidates:
             best_steps, best_file = max(candidates, key=lambda t: t[0])
-            checkpoint_path = os.path.join(checkpoint_dir, best_file)
+            checkpoint_path = best_file
             steps_done = best_steps
-            print(f"Found checkpoint: {checkpoint_path}")
-            print(f"Resuming from step {steps_done}")
+            print(f"[Resume] Auto-detected latest checkpoint: {checkpoint_path}")
+            print(f"[Resume] Resuming training from step {steps_done:,}")
+        else:
+            print(f"[Resume] No existing checkpoints found for '{constraint_method}_{policy_variant}'. Starting fresh training.")
 
     # Environment creation
     def make_env(rank, exprs, is_eval=False):
@@ -144,6 +173,9 @@ def train_agent(
             pid_state_file = checkpoint_path.replace(".zip", "_pid.json")
             if os.path.exists(pid_state_file):
                 pid_wrapper.load_state(pid_state_file)
+                print(f"[Resume] Restored PID controller state from {pid_state_file}")
+            else:
+                print(f"[Resume] Note: PID state file {pid_state_file} not found; initializing fresh PID.")
 
     val_env = DummyVecEnv([make_env(0, benchmarks, is_eval=True)])
     val_env.seed(seed)
@@ -259,7 +291,7 @@ def train_agent(
         remaining_steps = total_timesteps
         print(f"Starting fresh training: {total_timesteps} total steps")
 
-    unified_metrics_cb = UnifiedMetricsCallback(pid_wrapper=pid_wrapper, total_timesteps=remaining_steps, progress_freq=2000, verbose=1)
+    unified_metrics_cb = UnifiedMetricsCallback(pid_wrapper=pid_wrapper, total_timesteps=total_timesteps, progress_freq=2000, verbose=1)
 
     # Write heartbeat alongside every progress line (cheap, atomic).
     _orig_progress_step = unified_metrics_cb._on_step

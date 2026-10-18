@@ -194,6 +194,18 @@ def parse_arguments(args=None):
         default=0.0,
         help="KL-divergence bonus weight (default: 0.0)",
     )
+    train_parser.add_argument(
+        "--checkpoint",
+        type=str,
+        default=None,
+        help="Path to specific checkpoint .zip to resume from",
+    )
+    train_parser.add_argument(
+        "--fresh_start",
+        action="store_true",
+        default=False,
+        help="Start fresh training from step 0 (ignores existing checkpoints; default is auto-resume)",
+    )
 
     # ─── TEST COMMAND ─────────────────────────────────────────────────────────
     test_parser = subparsers.add_parser("test", help="Test the agent")
@@ -349,6 +361,8 @@ def main(args=None):
                 budget_options=budget_options,
                 constraint_method=parsed_args.method,
                 algo=parsed_args.algo,
+                checkpoint_path=parsed_args.checkpoint,
+                fresh_start=parsed_args.fresh_start,
             )
         else:
             # Unified & Constrained frameworks
@@ -372,6 +386,8 @@ def main(args=None):
                 denom_factor=parsed_args.denom_factor,
                 curriculum=parsed_args.curriculum,
                 eval_freq=parsed_args.eval_freq,
+                checkpoint_path=parsed_args.checkpoint,
+                fresh_start=parsed_args.fresh_start,
             )
 
     # ─────────────────────────────── TEST ─────────────────────────────

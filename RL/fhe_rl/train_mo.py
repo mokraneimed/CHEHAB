@@ -29,7 +29,8 @@ def set_random_seed(seed: int = 42):
 
 def train_agent_mo(expressions_file: str, embeddings_model, total_timesteps: int = 1_000_000, num_envs: int = 8, ent_coef: float = 0.1, seed: int = 42, 
                 lambda_env: float = 0.0, lambda_kl: float = 0.0, n_cycle: int = 1, n_budget: int = 5, eval_freq: int = 10000,
-                budget_options: list = None, constraint_method: str = "lagrangian_od_ov", algo: str = "ppo"):
+                budget_options: list = None, constraint_method: str = "lagrangian_od_ov", algo: str = "ppo",
+                checkpoint_path: str = None, fresh_start: bool = False):
     set_random_seed(seed)
     N=2
     pref_list = generate_pref_list(N)
@@ -46,17 +47,43 @@ def train_agent_mo(expressions_file: str, embeddings_model, total_timesteps: int
     os.makedirs(checkpoint_dir, exist_ok=True)
 
 
-    checkpoint_path = None
     steps_done = 0
-    if os.path.exists(checkpoint_dir):
-        checkpoints = [f for f in os.listdir(checkpoint_dir) if f.startswith("rl_model_") and f.endswith("_steps.zip")]
-        if checkpoints:
-            # Get the latest checkpoint
-            latest = max(checkpoints, key=lambda x: int(x.split("_")[2]))
-            checkpoint_path = os.path.join(checkpoint_dir, latest)
-            steps_done = int(latest.split("_")[2])
-            print(f"Found checkpoint: {checkpoint_path}")
-            print(f"Resuming from step {steps_done}")
+    import re
+    _CKPT_RE = re.compile(r"^rl_model_(\d+)_steps\.zip$")
+
+    if fresh_start:
+        checkpoint_path = None
+        print("[Resume] --fresh_start specified: starting fresh training from step 0 (ignoring existing checkpoints).")
+    elif checkpoint_path:
+        if not os.path.exists(checkpoint_path):
+            raise FileNotFoundError(f"Specified checkpoint file not found: {checkpoint_path}")
+        m = _CKPT_RE.match(os.path.basename(checkpoint_path))
+        if m:
+            steps_done = int(m.group(1))
+        print(f"[Resume] Explicit checkpoint provided: {checkpoint_path} (step {steps_done:,})")
+    else:
+        candidates = []
+        if os.path.exists(checkpoint_dir):
+            for f in os.listdir(checkpoint_dir):
+                m = _CKPT_RE.match(f)
+                if m:
+                    candidates.append((int(m.group(1)), os.path.join(checkpoint_dir, f)))
+        if not candidates and os.path.exists("./checkpoints"):
+            import glob
+            for d in glob.glob("./checkpoints/model_*"):
+                if os.path.isdir(d):
+                    for f in os.listdir(d):
+                        m = _CKPT_RE.match(f)
+                        if m:
+                            candidates.append((int(m.group(1)), os.path.join(d, f)))
+        if candidates:
+            best_steps, best_file = max(candidates, key=lambda t: t[0])
+            checkpoint_path = best_file
+            steps_done = best_steps
+            print(f"[Resume] Auto-detected latest checkpoint: {checkpoint_path}")
+            print(f"[Resume] Resuming training from step {steps_done:,}")
+        else:
+            print("[Resume] No existing checkpoints found. Starting fresh training.")
 
     lambda_env = 0.0
     def make_env(rank, expressions):
@@ -167,7 +194,7 @@ def train_agent_mo(expressions_file: str, embeddings_model, total_timesteps: int
 
     unified_metrics_cb = UnifiedMetricsCallback(
         pid_wrapper=None, 
-        total_timesteps=remaining_steps, 
+        total_timesteps=total_timesteps, 
         progress_freq=2000, 
         verbose=1
     )
