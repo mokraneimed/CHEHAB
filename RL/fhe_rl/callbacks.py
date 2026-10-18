@@ -7,6 +7,16 @@ import os
 import time
 
 
+RESET = "\033[0m"
+BOLD = "\033[1m"
+DIM = "\033[2m"
+RED = "\033[31m"
+GREEN = "\033[32m"
+YELLOW = "\033[33m"
+BLUE = "\033[34m"
+MAGENTA = "\033[35m"
+CYAN = "\033[36m"
+
 class EntCoefScheduler(BaseCallback):
     def __init__(self, schedule, verbose: int = 0):
         super().__init__(verbose)
@@ -54,17 +64,17 @@ class ParetoEvalCallback(BaseCallback):
 
     def _on_step(self) -> bool:
         if self.n_calls % self.eval_freq == 0:
-            if self.verbose > 0:
-                print(f"\n{BLUE}{'='*105}{RESET}", flush=True)
-                print(f"{BOLD}Step {self.num_timesteps:,} [Evaluation]: Starting Pareto & Safe Execution Evaluation ({len(self.pref_list)} front points, {self.n_eval_episodes} benchmarks each){RESET}", flush=True)
-                print(f"{BLUE}{'='*105}{RESET}")
-
             GREEN = "\033[92m"
             RED = "\033[91m"
             YELLOW = "\033[93m"
             CYAN = "\033[96m"
             BOLD = "\033[1m"
             RESET = "\033[0m"
+            if self.verbose > 0:
+                print(f"\n{BLUE}{'='*105}{RESET}", flush=True)
+                print(f"{BOLD}Step {self.num_timesteps:,} [Evaluation]: Starting Pareto & Safe Execution Evaluation ({len(self.pref_list)} front points, {self.n_eval_episodes} benchmarks each){RESET}", flush=True)
+                print(f"{BLUE}{'='*105}{RESET}")
+
 
             all_means = []
             all_lengths = []
