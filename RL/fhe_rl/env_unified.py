@@ -111,6 +111,39 @@ class fheEnvUnified(gym.Env):
         self.max_steps = 75
         self.max_expression_size = 10000
         self.embedding_dim = 256
+        self.env_idx = env_idx
+        self.embed_fallback_count = 0
+        self._worker_logged = False
+
+        # Clamping threads inside each worker environment to prevent thread contention
+        torch.set_num_threads(1)
+
+        # Construction-time assertion on embedding dimension for ANY embedder
+        if self.embeddings_model is not None:
+            if hasattr(self.embeddings_model, "get_embedding"):
+                probe_raw = self.embeddings_model.get_embedding("(+ 1 1)")
+                if probe_raw is None:
+                    raise AssertionError(
+                        f"Construction probe failed: Embedder {type(self.embeddings_model).__name__} returned None for '(+ 1 1)'"
+                    )
+                probe_arr = np.asarray(probe_raw, dtype=np.float32).reshape(-1)
+            else:
+                expr_tree = parse_sexpr("(+ 1 1)")
+                with torch.no_grad():
+                    probe_emb = get_expression_cls_embedding(expr_tree, self.embeddings_model)
+                if probe_emb is None:
+                    raise AssertionError(
+                        f"Construction probe failed: Embedder {type(self.embeddings_model).__name__} returned None for '(+ 1 1)'"
+                    )
+                probe_arr = probe_emb.squeeze(0).cpu().numpy().astype(np.float32).reshape(-1)
+
+            assert probe_arr.shape == (self.embedding_dim,), (
+                f"Construction assertion failed: Embedder {type(self.embeddings_model).__name__} "
+                f"output shape {probe_arr.shape} != ({self.embedding_dim},)"
+            )
+            assert np.all(np.isfinite(probe_arr)), (
+                f"Construction assertion failed: Embedder {type(self.embeddings_model).__name__} produced non-finite values"
+            )
 
         # Initialize constraint estimator & default budgets
         if self.constraint_metric == "mem":
@@ -288,6 +321,16 @@ class fheEnvUnified(gym.Env):
         return obs
 
     def step(self, action: int):
+        # Rate-limited worker logging on first step from inside each worker
+        if not getattr(self, "_worker_logged", False):
+            self._worker_logged = True
+            emb_cls = type(self.embeddings_model).__name__ if self.embeddings_model is not None else "None"
+            print(
+                f"[Worker {getattr(self, 'env_idx', 0)}] Embedder: {emb_cls} | "
+                f"Dim: {self.embedding_dim} | Threads: {torch.get_num_threads()}",
+                flush=True,
+            )
+
         if self.current_w[0] == 0.0 and self.current_w[1] == 1.0:
             action = list(self.rules.keys()).index("END") * self.max_positions
 
@@ -561,19 +604,35 @@ class fheEnvUnified(gym.Env):
         fallback = np.zeros((self.embedding_dim,), dtype=np.float32)
         try:
             if self.embeddings_model is None:
+                self.embed_fallback_count += 1
                 return fallback
             if hasattr(self.embeddings_model, "get_embedding"):
                 emb = self.embeddings_model.get_embedding(expr)
+                if emb is None:
+                    self.embed_fallback_count += 1
+                    return fallback
                 arr = np.asarray(emb, dtype=np.float32).reshape(-1)
-                return arr[: self.embedding_dim] if arr.size >= self.embedding_dim else np.pad(arr, (0, self.embedding_dim - arr.size))
+                if arr.size != self.embedding_dim:
+                    self.embed_fallback_count += 1
+                    return fallback
+                return arr
             expr_tree = parse_sexpr(expr)
             with torch.no_grad():
                 emb = get_expression_cls_embedding(expr_tree, self.embeddings_model)
             if emb is None:
+                self.embed_fallback_count += 1
                 return fallback
-            return emb.squeeze(0).cpu().numpy().astype(np.float32)
+            arr = emb.squeeze(0).cpu().numpy().astype(np.float32).reshape(-1)
+            if arr.size != self.embedding_dim:
+                self.embed_fallback_count += 1
+                return fallback
+            return arr
         except Exception:
+            self.embed_fallback_count += 1
             return fallback
+
+    def get_fallback_count(self) -> int:
+        return getattr(self, "embed_fallback_count", 0)
 
     def set_noise_budget(self, budget: int | None):
         if budget is None:

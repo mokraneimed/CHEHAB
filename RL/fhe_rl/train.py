@@ -53,6 +53,7 @@ def train_agent(
     checkpoint_path: str = None,
     fresh_start: bool = False,
     n_pref: int = 11,
+    embedder_type: str = "gnn",
 ):
     set_random_seed(seed)
     
@@ -101,8 +102,9 @@ def train_agent(
     rules_list = create_rules(rules_p, rot_p)
     rules_list["END"] = None
     
+    embedder_tag = "gnn" if "gnn" in str(embedder_type).lower() else "trae"
     job_id = os.environ.get("SLURM_JOB_ID", "jobid")
-    run_name = f"model_{job_id}_{constraint_method}_{policy_variant}"
+    run_name = f"model_{job_id}_{constraint_method}_{policy_variant}_{embedder_tag}"
     tensorboard_log_dir = f"./tensorboard/{run_name}"
     checkpoint_dir = f"./checkpoints/{run_name}"
     os.makedirs(checkpoint_dir, exist_ok=True)
@@ -134,7 +136,7 @@ def train_agent(
         # 2. Search other run dirs matching this configuration (e.g. model_*_nato_sc_film_a)
         if os.path.exists("./checkpoints"):
             import glob
-            config_pattern = f"./checkpoints/model_*_{constraint_method}_{policy_variant}"
+            config_pattern = f"./checkpoints/model_*_{constraint_method}_{policy_variant}_{embedder_tag}"
             for d in glob.glob(config_pattern):
                 if os.path.isdir(d):
                     for f in os.listdir(d):
@@ -156,14 +158,19 @@ def train_agent(
         def _init():
             np.random.seed(seed + rank)
             torch.manual_seed(seed + rank)
+            torch.set_num_threads(1)
             try:
                 import pytrs.config
                 pytrs.config.framework = pytrs_framework
             except ImportError:
                 pass
+            worker_emb = embeddings_model
+            if worker_emb is None:
+                from .utils import load_embeddings_from_config
+                worker_emb, _ = load_embeddings_from_config(embedder_type=embedder_type)
             env = EnvCls(
                 rules_list, exprs, max_positions=max_positions,
-                embeddings_model=embeddings_model,
+                embeddings_model=worker_emb,
                 budget_options=budget_options,
                 constraint_method=constraint_method,
                 constraint_metric=constraint_metric,
@@ -243,7 +250,7 @@ def train_agent(
         num_actions=len(rules_list),
         total_timesteps=total_timesteps,
         output_model_name=run_name,
-        notes=f"Algo: {algo} | Method: {constraint_method} | metric={constraint_metric} | budget_encoding={budget_encoding} | policy_variant={policy_variant} | num_envs={num_envs} | budgets={budget_options} | pref_mode={pref_mode}",
+        notes=f"Algo: {algo} | Method: {constraint_method} | metric={constraint_metric} | budget_encoding={budget_encoding} | policy_variant={policy_variant} | embedder={embedder_tag} | num_envs={num_envs} | budgets={budget_options} | pref_mode={pref_mode}",
     )
 
     # Callbacks

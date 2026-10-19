@@ -475,12 +475,21 @@ class UnifiedMetricsCallback(BaseCallback):
             mean_comp = float(np.mean(self.recent_compliances) * 100.0) if self.recent_compliances else 100.0
             lam = float(getattr(self.pid_wrapper, "lambda_penalty", 0.0)) if self.pid_wrapper else 0.0
 
+            total_fallbacks = 0
+            try:
+                if hasattr(self.training_env, "env_method"):
+                    counts = self.training_env.env_method("get_fallback_count")
+                    total_fallbacks = sum(counts)
+            except Exception:
+                pass
+            fallback_str = f" | Fallbacks: {total_fallbacks}" if total_fallbacks > 0 else ""
+
             if self.verbose > 0:
                 print(
                     f"[Step Progress] {self.num_timesteps:7,d} / {self.total_timesteps:,d} ({pct:5.2f}%) | "
                     f"Elapsed: {_fmt_dur(elapsed)} | ETA: {_fmt_dur(eta_sec)} | "
                     f"FPS: {inst_fps:5.1f} (avg: {avg_fps:5.1f}) | "
-                    f"Cost Red: {mean_red:+5.1f}% | Compl: {mean_comp:5.1f}% | λ: {lam:.4f}",
+                    f"Cost Red: {mean_red:+5.1f}% | Compl: {mean_comp:5.1f}% | λ: {lam:.4f}{fallback_str}",
                     flush=True
                 )
             self.last_progress_step = self.num_timesteps
@@ -500,6 +509,15 @@ class UnifiedMetricsCallback(BaseCallback):
             return f"{sec//3600:02d}:{(sec%3600)//60:02d}:{sec%60:02d}"
 
         lam = float(getattr(self.pid_wrapper, "lambda_penalty", 0.0)) if self.pid_wrapper else 0.0
+
+        total_fallbacks = 0
+        try:
+            if hasattr(self.training_env, "env_method"):
+                counts = self.training_env.env_method("get_fallback_count")
+                total_fallbacks = sum(counts)
+        except Exception:
+            pass
+        self.logger.record("rollout/embed_fallback_count", total_fallbacks)
 
         if self.ep_costs:
             m_cost_red = float(np.mean(self.ep_cost_reductions))

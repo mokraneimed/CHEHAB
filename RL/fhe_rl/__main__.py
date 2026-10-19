@@ -342,9 +342,13 @@ def main(args=None):
     set_framework(framework_name)
     spec = get_framework_spec()
 
-    # Embedder selection & propagation
-    embedder_choice = getattr(parsed_args, "embedder", "gnn")
-    set_embeddings_model_type(embedder_choice)
+    # Embedder selection & propagation (GNN only for unified; keep original for morl/constrained)
+    if framework_name == "unified":
+        embedder_choice = getattr(parsed_args, "embedder", "gnn")
+        set_embeddings_model_type(embedder_choice)
+    else:
+        embedder_choice = "trae"
+        set_embeddings_model_type(embedder_choice)
 
     # ─────────────────────────────── TRAIN ────────────────────────────
     if mode == "train":
@@ -352,7 +356,7 @@ def main(args=None):
         emb_cls = type(embeddings).__name__ if embeddings is not None else "None"
         emb_path = get_model_path("gnn_embeddings_model" if embedder_choice == "gnn" else "dynamic_embeddings_model")
         emb_sz = os.path.getsize(emb_path) if os.path.exists(emb_path) else 0
-        print(f"=== Embedder Selection: {embedder_choice.upper()} ===")
+        print(f"=== Embedder Selection ({framework_name.upper()}): {embedder_choice.upper()} ===")
         print(f"  Class:        {emb_cls}")
         print(f"  Output Dim:   256")
         print(f"  Weights File: {emb_path} ({emb_sz / (1024*1024):.2f} MB)")
@@ -398,7 +402,6 @@ def main(args=None):
                 checkpoint_path=parsed_args.checkpoint,
                 fresh_start=parsed_args.fresh_start,
                 n_pref=parsed_args.n_pref,
-                embedder_type=embedder_choice,
             )
         else:
             # Unified & Constrained frameworks
@@ -425,7 +428,6 @@ def main(args=None):
                 checkpoint_path=parsed_args.checkpoint,
                 fresh_start=parsed_args.fresh_start,
                 n_pref=parsed_args.n_pref,
-                embedder_type=embedder_choice,
             )
 
     # ─────────────────────────────── TEST ─────────────────────────────

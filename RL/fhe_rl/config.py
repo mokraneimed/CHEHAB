@@ -76,6 +76,7 @@ FRAMEWORKS = {
         model_key="agent_model",
         pytrs="constrained",
         pref_mode="single",
+        embeddings_model_type=EmbeddingsModelType.TRANSFORMER_AUTOENCODER,
     ),
     "morl": dict(
         env="fhe_rl.env_mo.fheEnvMO",
@@ -84,6 +85,7 @@ FRAMEWORKS = {
         model_key="mo_agent_model",
         pytrs="morl",
         pref_mode="pareto",
+        embeddings_model_type=EmbeddingsModelType.TRANSFORMER_AUTOENCODER,
     ),
     "unified": dict(
         env="fhe_rl.env_unified.fheEnvUnified",
@@ -92,6 +94,7 @@ FRAMEWORKS = {
         model_key="unified_agent_model",
         pytrs="constrained",
         pref_mode="pareto",
+        embeddings_model_type=EmbeddingsModelType.GNN_AUTOENCODER,
     ),
     "baseline": dict(
         env="fhe_rl.baseline.env_baseline.fheEnv",
@@ -100,6 +103,7 @@ FRAMEWORKS = {
         model_key="agent_model",
         pytrs="constrained",
         pref_mode="single",
+        embeddings_model_type=EmbeddingsModelType.TRANSFORMER_AUTOENCODER,
     ),
 }
 
@@ -127,6 +131,8 @@ def set_framework(framework_name: str):
     COMPONENT_CONFIG["env_class"] = spec["env"]
     COMPONENT_CONFIG["policy_class"] = spec["policy"]
     COMPONENT_CONFIG["wrapper_class"] = spec["wrapper"]
+    if "embeddings_model_type" in spec:
+        AGENT_CONFIG["embeddings_model_type"] = spec["embeddings_model_type"]
     _CURRENT_FRAMEWORK = framework_name
 
 def get_framework() -> str:
