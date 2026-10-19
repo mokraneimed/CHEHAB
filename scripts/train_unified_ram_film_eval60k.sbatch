@@ -78,6 +78,7 @@ echo "  Method:          $METHOD"
 echo "  Algo:            $ALGO"
 echo "  Budget Encoding: $ENCODING"
 echo "  Policy Variant:  $VARIANT"
+echo "  Embedder:        gnn"
 echo "  Timesteps:       $TIMESTEPS"
 echo "  Eval Freq:       Every $EVAL_FREQ timesteps"
 echo "  Pref Vectors:    8 (dropped 2 least important extreme-keys vectors)"
@@ -99,5 +100,6 @@ stdbuf -oL -eL python -u -m fhe_rl \
     --algo "$ALGO" \
     --budget_encoding "$ENCODING" \
     --policy_variant "$VARIANT" \
+    --embedder gnn \
     "$@" \
     > "$PROJ_ROOT/logs/train_unified_ram_film_eval60k_${SLURM_JOB_ID:-local}.log" 2>&1
