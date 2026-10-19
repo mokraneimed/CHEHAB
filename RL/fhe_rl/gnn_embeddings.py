@@ -19,9 +19,13 @@ class FHEFeatureExtractor:
         # 1. Initialize the Model Architecture
         self.model = Graph2Seq()
 
-        # 2. Check path
+        # 2. Check path with fallback to relative trained_models dir
         if not os.path.exists(model_path):
-            raise FileNotFoundError(f"Model checkpoint not found at {model_path}")
+            alt_path = os.path.join(os.path.dirname(__file__), "trained_models", os.path.basename(model_path))
+            if os.path.exists(alt_path):
+                model_path = alt_path
+            else:
+                raise FileNotFoundError(f"Model checkpoint not found at {model_path}")
 
         # 3. Load Weights
         # Map to the specified device (cpu or cuda)
