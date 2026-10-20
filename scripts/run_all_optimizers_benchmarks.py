@@ -32,7 +32,11 @@ SCRIPTS_DIR = REPO_ROOT / "scripts"
 RESULTS_DIR = REPO_ROOT / "results"
 RUNNER_SCRIPT = SCRIPTS_DIR / "run_all_benchmarks.py"
 
-DEFAULT_DNNS = ["conv2d", "full_dnn", "cryptonets", "mlp", "lola"]
+DEFAULT_DNNS = [
+    "conv2d", "full_dnn", "cryptonets", "mlp", "lola", "lenet",
+    "resnet20_relu", "resnet20_silu", "resnet34_relu", "resnet34_silu",
+    "resnet50_relu", "resnet50_silu", "alexnet",
+]
 
 OPTIMIZERS_CONFIG = [
     {
@@ -106,6 +110,17 @@ def parse_args() -> argparse.Namespace:
         help="BSGS base (default: global)",
     )
     parser.add_argument(
+        "--naf",
+        action="store_true",
+        help="enable NAF rotation-key reduction during Lattigo code generation",
+    )
+    parser.add_argument(
+        "--naf-threshold",
+        type=int,
+        default=0,
+        help="maximum rotation-key count targeted by NAF reduction; 0 selects the smallest possible budget",
+    )
+    parser.add_argument(
         "--output-dir",
         type=Path,
         default=RESULTS_DIR,
@@ -161,6 +176,9 @@ def format_excel_sheet(worksheet: Any) -> None:
 
 def main() -> int:
     args = parse_args()
+    if args.naf_threshold < 0:
+        print("--naf-threshold must be non-negative", file=sys.stderr)
+        return 1
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     selected_opt_keys = [k.strip() for k in args.optimizers.split(",") if k.strip()]
@@ -232,6 +250,8 @@ def main() -> int:
         ]
         if cli_opt == "morl":
             cmd.extend(["--w-ops", str(args.w_ops)])
+        if args.naf:
+            cmd.extend(["--naf", "--naf-threshold", str(args.naf_threshold)])
 
         proc = subprocess.run(cmd, cwd=REPO_ROOT, check=False)
         if proc.returncode != 0:

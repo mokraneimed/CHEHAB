@@ -124,18 +124,17 @@ void Compiler::gen_lattigo_code(
     
     // Add 1 if this is a cipher-cipher multiplication
     auto op_type = term->op_code().type();
-    if (op_type == ir::OpCode::Type::mul || op_type == ir::OpCode::Type::square)
+    if (op_type == ir::OpCode::Type::mul || op_type == ir::OpCode::Type::square || op_type == ir::OpCode::Type::rescale)
     {
-      // Check if cipher-cipher (not cipher-plain)
-      bool is_ctxt_ctxt = (op_type == ir::OpCode::Type::square);
-      if (!is_ctxt_ctxt && term->operands().size() >= 2)
+      bool is_level_consuming = (op_type == ir::OpCode::Type::square || op_type == ir::OpCode::Type::rescale);
+      if (!is_level_consuming && term->operands().size() >= 2)
       {
         auto* op1 = term->operands()[0];
         auto* op2 = term->operands()[1];
-        is_ctxt_ctxt = (op1->type() == ir::Term::Type::cipher && 
-                        op2->type() == ir::Term::Type::cipher);
+        is_level_consuming = (op1->type() == ir::Term::Type::cipher && 
+                              op2->type() == ir::Term::Type::cipher);
       }
-      if (is_ctxt_ctxt)
+      if (is_level_consuming)
         ++depth;
     }
     
