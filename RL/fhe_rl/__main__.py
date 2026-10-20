@@ -136,6 +136,16 @@ def parse_arguments(args=None):
         '--lambda_kl', type=float, default=0.0,
         help='Lambda for KL penalty (MORL)'
     )
+    train_parser.add_argument(
+        '--mo_objective2', type=str, default='keys',
+        choices=['keys', 'memory'],
+        help='Second MORL objective: unique rotation keys or CKKS peak memory (default: keys)'
+    )
+    train_parser.add_argument(
+        '--mem_backend', type=str, default='gpu',
+        choices=['gpu', 'cpu'],
+        help='Backend for memory estimator: gpu (HEonGPU) or cpu (Lattigo) (default: gpu)'
+    )
     
     # Test command
     test_parser = subparsers.add_parser('test', help='Test the agent')
@@ -266,6 +276,8 @@ def main(args=None):
                 lambda_env=parsed_args.lambda_env,
                 lambda_kl=parsed_args.lambda_kl,
                 eval_freq=parsed_args.eval_freq,
+                objective2=parsed_args.mo_objective2,
+                mem_backend=parsed_args.mem_backend,
             )
         else:
             train_agent(

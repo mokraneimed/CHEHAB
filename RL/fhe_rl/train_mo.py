@@ -28,7 +28,8 @@ def set_random_seed(seed: int = 42):
     os.environ['PYTHONHASHSEED'] = str(seed)
 
 def train_agent_mo(expressions_file: str, embeddings_model, total_timesteps: int = 1_000_000, num_envs: int = 8, ent_coef: float = 0.1, seed: int = 42, 
-                lambda_env: float = 0.0, lambda_kl: float = 0.0, n_cycle: int = 1, n_budget: int = 5, eval_freq: int = 10000):
+                lambda_env: float = 0.0, lambda_kl: float = 0.0, n_cycle: int = 1, n_budget: int = 5, eval_freq: int = 10000,
+                objective2: str = "keys", mem_backend: str = "gpu"):
     set_random_seed(seed)
     N=2
     pref_list = generate_pref_list(N)
@@ -69,7 +70,8 @@ def train_agent_mo(expressions_file: str, embeddings_model, total_timesteps: int
             # Pass pref_list and rank to each env
             EnvCls = get_env_class()
             return Monitor(EnvCls(rules_list, expressions, max_positions=max_positions, embeddings_model=embeddings_model, 
-                                  pref_list=pref_list, lambda_env=lambda_env, lambda_kl=lambda_kl, n_cycle=n_cycle, n_budget=n_budget, env_idx=rank))
+                                  pref_list=pref_list, lambda_env=lambda_env, lambda_kl=lambda_kl, n_cycle=n_cycle, n_budget=n_budget, env_idx=rank,
+                                  objective2=objective2, mem_backend=mem_backend))
         return _init  
     env = SubprocVecEnv([make_env(i, expressions) for i in range(num_envs)])
     env.seed(seed)     

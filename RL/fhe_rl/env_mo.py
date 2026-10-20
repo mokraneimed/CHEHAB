@@ -5,6 +5,7 @@ from pytrs import parse_sexpr, calculate_cost, Expr, Const, Var, Op, expr_to_str
 import torch
 from .config import get_tokenizer_type
 from pytrs.cost import _calculate_cost_mo
+from pytrs.ckks_memory_estimator import CKKSMemoryEstimator
 
 if get_tokenizer_type() == "bpe":
 
@@ -42,6 +43,8 @@ class fheEnvMO(gym.Env):
         n_cycle=1,
         n_budget=5,
         env_idx=0,
+        objective2="keys",
+        mem_backend="gpu",
     ):
 
 
@@ -69,6 +72,11 @@ class fheEnvMO(gym.Env):
         self.n_budget = n_budget
         self.lambda_kl = lambda_kl
         self.lambda_env = lambda_env
+
+        # Second objective: 'keys' (unique rotation keys) or 'memory' (CKKS peak memory)
+        self.objective2 = objective2
+        if self.objective2 == "memory":
+            self._mem_estimator = CKKSMemoryEstimator(backend=mem_backend)
 
         self.pref_locked = False
         self.embeded_expression = None
@@ -100,8 +108,11 @@ class fheEnvMO(gym.Env):
     def get_split_costs(self, expr_str):
         parsed = parse_sexpr(expr_str)
         ops = _calculate_cost_mo(parsed, w_keys=0.0)
-        keys = _calculate_cost_mo(parsed, w_keys=1.0) - ops
-        return ops, keys
+        if self.objective2 == "memory":
+            obj2 = self._mem_estimator.estimate(expr_str)
+        else:
+            obj2 = _calculate_cost_mo(parsed, w_keys=1.0) - ops
+        return ops, obj2
 
     def _sample_preference(self) -> tuple[np.ndarray, str]:
         """
@@ -137,8 +148,8 @@ class fheEnvMO(gym.Env):
 
         self.initial_cost = self.current_cost = self.get_cost(self.expression)
 
-        self.initial_ops, self.initial_keys = self.get_split_costs(self.expression)
-        self.curr_ops, self.curr_keys = self.get_split_costs(self.expression)
+        self.initial_ops, self.initial_obj2 = self.get_split_costs(self.expression)
+        self.curr_ops, self.curr_obj2 = self.get_split_costs(self.expression)
 
         if self.pref_locked:
             mode_name = "LOCKED (EVALUATION)"
@@ -170,11 +181,12 @@ class fheEnvMO(gym.Env):
         terminated = False
         truncated = False
         reward = 0
+        obj2_label = "memory (MB)" if self.objective2 == "memory" else "keys cost"
         print(f"\n{CYAN}{'-'*100}{RESET}")
         print(f"{BOLD}{MAGENTA}Old expression{RESET}: {YELLOW}{self.expression}{RESET}")
         print(f"{BOLD}{MAGENTA}Old exec cost      {RESET}: {RED}{self.curr_ops}{RESET}")
         print(
-            f"{BOLD}{MAGENTA}Old keys cost      {RESET}: {RED}{self.curr_keys}{RESET}"
+            f"{BOLD}{MAGENTA}Old {obj2_label:<14}{RESET}: {RED}{self.curr_obj2}{RESET}"
         )
 
         if rule_name == "END":
@@ -191,11 +203,11 @@ class fheEnvMO(gym.Env):
             self.expression = temp
             new_cost = self.get_cost(self.expression)
 
-            new_ops, new_keys = self.get_split_costs(self.expression)
-            reward = self.calculate_intermediate_reward(new_ops, new_keys)
+            new_ops, new_obj2 = self.get_split_costs(self.expression)
+            reward = self.calculate_intermediate_reward(new_ops, new_obj2)
 
             self.curr_ops = new_ops
-            self.curr_keys = new_keys
+            self.curr_obj2 = new_obj2
 
             self.current_cost = new_cost
             if self.steps >= self.max_steps:
@@ -207,7 +219,7 @@ class fheEnvMO(gym.Env):
         print(f"{BOLD}{MAGENTA}New expression{RESET}: {YELLOW}{self.expression}{RESET}")
         print(f"{BOLD}{MAGENTA}New exec cost      {RESET}: {RED}{self.curr_ops}{RESET}")
         print(
-            f"{BOLD}{MAGENTA}New keys cost      {RESET}: {RED}{self.curr_keys}{RESET}"
+            f"{BOLD}{MAGENTA}New {obj2_label:<14}{RESET}: {RED}{self.curr_obj2}{RESET}"
         )
         print(f"{BOLD}{MAGENTA}Reward        {RESET}: {reward_color}{reward}{RESET}")
         print(f"{BOLD}{MAGENTA}Rule name     {RESET}: {CYAN}{rule_name}{RESET}")
@@ -232,13 +244,13 @@ class fheEnvMO(gym.Env):
                 f"\n{BOLD}{MAGENTA}Initial exec cost {RESET}: {YELLOW}{self.initial_ops}{RESET}"
             )
             print(
-                f"{BOLD}{MAGENTA}Initial keys cost {RESET}: {YELLOW}{self.initial_keys}{RESET}"
+                f"{BOLD}{MAGENTA}Initial {obj2_label:<9} {RESET}: {YELLOW}{self.initial_obj2}{RESET}"
             )
             print(
                 f"{BOLD}{MAGENTA}Final exec cost   {RESET}: {GREEN}{self.curr_ops}{RESET}"
             )
             print(
-                f"{BOLD}{MAGENTA}Final keys cost   {RESET}: {GREEN}{self.curr_keys}{RESET}"
+                f"{BOLD}{MAGENTA}Final {obj2_label:<11} {RESET}: {GREEN}{self.curr_obj2}{RESET}"
             )
         obs = self._get_obs()
         return obs, reward, terminated, truncated, {"expression": self.expression}
@@ -271,16 +283,24 @@ class fheEnvMO(gym.Env):
         return isValid
 
     def _reward_vector(
-        self, delta_ops_old, delta_ops_new, delta_keys_old, delta_keys_new
+        self, delta_ops_old, delta_ops_new, delta_obj2_old, delta_obj2_new
     ) -> np.ndarray:
-        """Compute the 2-D reward vector [r_ops, r_keys]."""
+        """Compute the 2-D reward vector [r_ops, r_obj2]."""
         r_ops = (
             (delta_ops_old - delta_ops_new) / delta_ops_old
             if delta_ops_old != 0
             else 0.0
         )
-        r_keys = (delta_keys_old - delta_keys_new) / self.n_budget
-        return np.array([r_ops, r_keys], dtype=np.float32)
+        if self.objective2 == "memory":
+            # Relative improvement: (old - new) / old
+            r_obj2 = (
+                (delta_obj2_old - delta_obj2_new) / delta_obj2_old
+                if delta_obj2_old != 0
+                else 0.0
+            )
+        else:
+            r_obj2 = (delta_obj2_old - delta_obj2_new) / self.n_budget
+        return np.array([r_ops, r_obj2], dtype=np.float32)
 
     def _kl_bonus(self, r_vec: np.ndarray) -> float:
         """
@@ -311,13 +331,13 @@ class fheEnvMO(gym.Env):
             reward += self.lambda_kl * self._kl_bonus(r_vec)
         return reward
 
-    def calculate_intermediate_reward(self, new_ops: float, new_keys: float) -> float:
-        r_vec = self._reward_vector(self.curr_ops, new_ops, self.curr_keys, new_keys)
+    def calculate_intermediate_reward(self, new_ops: float, new_obj2: float) -> float:
+        r_vec = self._reward_vector(self.curr_ops, new_ops, self.curr_obj2, new_obj2)
         return self._compose_reward(r_vec)
 
     def calculate_final_reward(self) -> float:
         r_vec = self._reward_vector(
-            self.initial_ops, self.curr_ops, self.initial_keys, self.curr_keys
+            self.initial_ops, self.curr_ops, self.initial_obj2, self.curr_obj2
         )
         return self._compose_reward(r_vec) * 100
 
