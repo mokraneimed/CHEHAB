@@ -90,9 +90,9 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
             "features_dim": 258,
             "rule_dim":      len(rules_list),
             "max_positions": max_positions,
-            "rule_hidden_dims":   [64, 32],
-            "pos_hidden_dims":    [32, 32],
-            "value_hidden_dims":    [128, 64, 32],
+            "rule_hidden_dims":   [128, 64],
+            "pos_hidden_dims":    [64, 64],
+            "value_hidden_dims":    [256, 128, 64],
             "seed": seed,
         }
     }
@@ -115,7 +115,7 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
     num_benchmarks = len(benchmarks)
 
     checkpoint_callback = CheckpointCallback(
-        save_freq=10000,
+        save_freq=40000,
         save_path=checkpoint_dir,
         name_prefix="rl_model",
         save_replay_buffer=False,
@@ -123,14 +123,14 @@ def train_agent(expressions_file: str, embeddings_model, total_timesteps: int = 
         verbose=1
     )
 
- 
+    eval_pref_list = generate_pref_list(5) 
 
     pareto_eval_cb = ParetoEvalCallback(
         val_env, 
-        pref_list=pref_list,
+        pref_list=eval_pref_list,
         best_model_save_path=f"./eval/best_model_{run_name}", 
         log_path=tensorboard_log_dir, 
-        eval_freq=10000, # Replicating your parameter
+        eval_freq=40000, # Replicating your parameter
         n_eval_episodes=num_benchmarks, # Replicating your parameter
         deterministic=True, 
         verbose=1

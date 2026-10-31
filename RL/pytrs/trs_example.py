@@ -12,12 +12,15 @@ from cost import calculate_cost
 
 def example_usage():
     
-    rules = create_rules('../rules.txt', '../rotations_rules.txt') # returns a dict of rules {rulename:rule}
-    print(rules)
+    rules = create_rules('../rules.txt', rotations_rules_path='../rotations_rules.txt')
+
     rule = rules["rotate_4"]
 
-    # Example expression: ( << (Vec a b c d e f g h i ) 1 )
-    expr_str = "(<< (Vec a b c d e f g h i) 4)"
+    # Initial vector of size 8
+    V0 = "(Vec a b c d e f g h)"
+    V1 = f"(VecAdd {V0} (<< {V0} 4))"
+    V2 = f"(VecMinus {V1} (<< {V1} 4))"
+    expr_str = f"(<< (<< {V0} n) 4)"
     
     
     
